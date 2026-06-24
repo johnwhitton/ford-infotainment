@@ -104,7 +104,8 @@ Phase 1 intentionally uses:
 
 | Module | Responsibility |
 | --- | --- |
-| `src/main.rs` | Minimal demonstration wiring the service bus and mock service. |
+| `src/lib.rs` | Library entry point exporting the prototype modules for reuse by tests and executables. |
+| `src/main.rs` | Demonstration executable for exercising the library. Phase 1 uses a minimal entry point to prove the service architecture. Phase 2 evolves this into a full CLI using `clap`, allowing commands, demos, and transport adapters to be exercised without changing the underlying library. |
 | `src/command.rs` | Command types, command envelope, parsing, and validation helpers. |
 | `src/event.rs` | Event and acknowledgement types. |
 | `src/service_bus.rs` | Async command routing, channel ownership, and receiver behavior. |
@@ -112,7 +113,22 @@ Phase 1 intentionally uses:
 | `src/telemetry.rs` | Telemetry event abstraction and in-memory test sink. |
 | `src/transport.rs` | Transport abstraction and first `InProcessTransport` implementation. |
 | `src/error.rs` | Typed error model for validation, policy, routing, and execution failures. |
-| `tests/command_flow_tests.rs` | End-to-end command flow tests. |
+| `tests/command_tests.rs` | Command model tests, expanding into end-to-end command flow tests as Phase 1 progresses. |
+
+## Library-First Architecture
+
+The prototype follows a library-first architecture.
+
+The core implementation lives in the reusable library (`src/lib.rs`) while
+`src/main.rs` remains a thin executable responsible only for demonstrating and
+exercising the library.
+
+Phase 1 intentionally keeps `main.rs` minimal to focus on service boundaries,
+validation, policy, transport abstraction, and testability.
+
+Phase 2 will evolve `main.rs` into a richer command-line interface using
+`clap`, exposing demonstrations, command submission, and optional transport
+adapters without changing the underlying library.
 
 ## Phase 1 Implementation Estimate
 
@@ -137,6 +153,7 @@ policy.rs:          80-150 LOC
 transport.rs:       80-150 LOC
 service_bus.rs:     100-180 LOC
 telemetry.rs:       60-120 LOC
+lib.rs:             20-40 LOC
 main.rs:            40-80 LOC
 tests:              150-300 LOC
 ```

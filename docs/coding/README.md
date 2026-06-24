@@ -109,6 +109,7 @@ Alternatives considered:
 
 ```text
 Cargo.toml
+src/lib.rs
 src/main.rs
 src/command.rs
 src/event.rs
@@ -117,7 +118,7 @@ src/policy.rs
 src/telemetry.rs
 src/transport.rs
 src/error.rs
-tests/command_flow_tests.rs
+tests/command_tests.rs
 ```
 
 ## Command Examples

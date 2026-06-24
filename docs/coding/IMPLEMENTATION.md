@@ -40,6 +40,7 @@ the service design before adding any external messaging server or broker.
 
 ```text
 Cargo.toml
+src/lib.rs
 src/main.rs
 src/command.rs
 src/event.rs
@@ -48,7 +49,7 @@ src/policy.rs
 src/telemetry.rs
 src/transport.rs
 src/error.rs
-tests/command_flow_tests.rs
+tests/command_tests.rs
 ```
 
 The repository uses root-level `src/` and `tests/` for Rust code. It does not
@@ -77,6 +78,7 @@ policy.rs:          80-150 LOC
 transport.rs:       80-150 LOC
 service_bus.rs:     100-180 LOC
 telemetry.rs:       60-120 LOC
+lib.rs:             20-40 LOC
 main.rs:            40-80 LOC
 tests:              150-300 LOC
 ```
@@ -250,6 +252,13 @@ Reasons:
 - Does not require writing a broker.
 
 Do not build an MQTT broker/server in Phase 2 unless explicitly requested.
+
+### CLI Evolution
+
+The initial executable is intentionally minimal. Once the library is complete,
+the executable will evolve into a `clap`-based command-line interface capable
+of running demonstrations, submitting commands, and exercising optional
+transport adapters.
 
 ## MQTT Server/Broker Options
 

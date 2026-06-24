@@ -29,17 +29,20 @@ Completed:
 Remaining:
 
 - [ ] Stage 7 - review, stage, and commit documentation changes.
-- [ ] Stage 8 - implement the Rust command/event service-bus prototype.
+- [ ] Stage 8 - continue and complete the Rust command/event service-bus
+      prototype.
 
 ## Existing Repository State
 
 The repository is currently documentation-led. It has the planned documentation
-structure, but the Rust prototype has not been implemented yet.
+structure and a minimal Rust prototype skeleton, but the full command/event
+service-bus implementation is not complete yet.
 
 Current filesystem state:
 
 ```text
 .
+|-- Cargo.toml
 |-- INFOTAINMENT_BUILD.md
 |-- LICENSE
 |-- README.md
@@ -66,7 +69,12 @@ Current filesystem state:
 |       `-- images
 |           |-- A2_3_Salus_Architecture.png
 |           `-- A2_7_SalusWalkthrough.png
+|-- src
+|   |-- command.rs
+|   |-- lib.rs
+|   `-- main.rs
 `-- tests
+    `-- command_tests.rs
 ```
 
 Current code status:
@@ -78,10 +86,13 @@ Current code status:
       `docs/architecture/`.
 - [x] `docs/walkthrough/salus_runtime_walkthrough.md` is not present; the
       walkthrough narrative lives in `docs/walkthrough/README.md`.
-- [x] Root `tests/` exists as the future home for Rust integration tests.
-- [ ] Root `Cargo.toml` has not been created yet.
-- [ ] Root `src/` has not been created yet.
-- [ ] The Rust prototype has not been implemented yet.
+- [x] Root `Cargo.toml` exists.
+- [x] Root `src/` exists.
+- [x] `src/lib.rs` exists as the reusable library entry point.
+- [x] `src/main.rs` exists as a minimal demonstration executable.
+- [x] `src/command.rs` exists with an initial command model.
+- [x] Root `tests/` exists with `tests/command_tests.rs`.
+- [ ] The full command/event service-bus prototype is not complete yet.
 
 ## Operating Rules
 
@@ -315,6 +326,10 @@ Completed tasks:
       external local broker before considering any Rust MQTT server/broker.
 - [x] Added Phase 2 acceptance criteria requiring opt-in broker tests and shared
       validation, policy, telemetry, and acknowledgement logic.
+- [x] Added library-first architecture with `src/lib.rs` as the reusable module
+      entry point and `src/main.rs` as a thin demonstration executable.
+- [x] Scoped `clap` CLI evolution to Phase 2 documentation instead of Phase 1
+      implementation work.
 
 Planned prototype flow:
 
@@ -329,10 +344,11 @@ Client / HMI
   -> telemetry log
 ```
 
-Planned Rust modules for Stage 8:
+Target Stage 8 module layout:
 
 ```text
 Cargo.toml
+src/lib.rs
 src/main.rs
 src/command.rs
 src/event.rs
@@ -341,7 +357,7 @@ src/policy.rs
 src/telemetry.rs
 src/transport.rs
 src/error.rs
-tests/command_flow_tests.rs
+tests/command_tests.rs
 ```
 
 Planned command examples:
@@ -440,8 +456,8 @@ Acceptance checks:
 
 ## Stage 8 - Rust Prototype - Remaining
 
-Objective: implement the Rust prototype incrementally after the documentation
-structure is ready.
+Objective: continue implementing the Rust prototype incrementally from the
+current skeleton.
 
 Implementation source of truth:
 
@@ -451,9 +467,11 @@ Implementation source of truth:
 
 Tasks:
 
-- [ ] Create root `Cargo.toml`.
-- [ ] Create root `src/`.
-- [ ] Populate or reuse root `tests/` for integration tests.
+- [x] Create root `Cargo.toml`.
+- [x] Create root `src/`.
+- [x] Create `src/lib.rs` as the reusable library entry point.
+- [x] Keep `src/main.rs` minimal for the Phase 1 demonstration executable.
+- [x] Populate or reuse root `tests/` for integration tests.
 - [ ] Add dependencies for Tokio, thiserror, tracing, and optional serde if
       needed by the implementation.
 - [ ] Implement typed command APIs.
@@ -471,6 +489,7 @@ Tasks:
 - [ ] Ensure `cargo run` runs locally without Docker and without a broker.
 - [ ] Keep MQTT out of the first implementation except as documented future
       design context.
+- [ ] Leave the richer `clap`-based CLI for Phase 2.
 - [ ] Keep the prototype small enough to explain in an interview.
 
 Non-goals for Stage 8:
@@ -513,13 +532,14 @@ the documentation structure:
 |   |-- command.rs
 |   |-- error.rs
 |   |-- event.rs
+|   |-- lib.rs
 |   |-- main.rs
 |   |-- policy.rs
 |   |-- service_bus.rs
 |   |-- telemetry.rs
 |   `-- transport.rs
 `-- tests
-    `-- command_flow_tests.rs
+    `-- command_tests.rs
 ```
 
 ## Final Documentation Acceptance Criteria
@@ -531,7 +551,8 @@ the documentation structure:
       folder.
 - [x] The plan reflects that `docs/assets/` was processed and removed.
 - [x] The plan reflects that `docs/src` was removed.
-- [x] The plan reflects that the Rust prototype has not yet been generated.
+- [x] The plan reflects that the Rust prototype skeleton exists but is not yet
+      complete.
 - [x] The plan supports working with Codex step by step.
 - [x] The repository stays focused on Ford interview preparation and portfolio
       review.
