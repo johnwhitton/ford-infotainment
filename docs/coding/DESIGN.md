@@ -1,599 +1,411 @@
 # Vehicle Command/Event Service Bus Design
 
-This document defines the proposed Rust prototype design. The prototype is a
-small, reviewable service-bus example rather than a production vehicle
+This document describes the implemented Phase 1 Rust prototype. The prototype
+is a small, reviewable service-bus example rather than a production vehicle
 platform.
 
 ## Prototype Overview
 
-The service accepts vehicle commands, validates them, checks policy, routes
-allowed commands to a mock vehicle service, emits acknowledgement events, and
-records telemetry. The design mirrors the structure of a safety-conscious
-command path without claiming Ford internal architecture or integrating with
-real vehicle systems.
+The service accepts typed vehicle commands, validates them, checks policy,
+routes allowed commands through an in-process transport, executes them through
+a mock vehicle service, returns command acknowledgements, and records domain
+events in shared in-memory telemetry.
 
-The core prototype runs locally without Docker and without a network broker.
-MQTT is a future adapter around the same command/event flow, not a first-step
-dependency.
+The implementation runs locally without Docker, MQTT, a broker, or any network
+server. MQTT remains a Phase 2 transport adapter option around the same
+architecture, not a Phase 1 dependency and not a replacement for the service
+bus.
+
+## Canonical Phase 1 Architecture
 
 ```mermaid
-graph LR
-    Client["Client / HMI"]
-    Parser["Command parser"]
-    Validation["Validation"]
-    Policy["Policy / safety gate"]
-    Bus["In-process Tokio service bus"]
-    Vehicle["Mock vehicle service"]
-    Event["Acknowledgement event"]
-    Telemetry["Telemetry log"]
+flowchart TD
+    Demo["Demo executable<br/>src/main.rs"]
+    Bus["VehicleCommandBus"]
+    Validation["Command validation"]
+    Policy["PolicyEngine"]
+    Transport["InProcessTransport<br/>Tokio MPSC bounded queue"]
+    Worker["Background worker"]
+    Vehicle["MockVehicleService"]
+    Ack["CommandAcknowledgement"]
+    Event["VehicleEvent"]
+    Telemetry["InMemoryTelemetry<br/>shared in-memory sink"]
 
-    Client --> Parser
-    Parser --> Validation
+    Demo --> Bus
+    Bus --> Validation
     Validation --> Policy
-    Policy --> Bus
-    Bus --> Vehicle
-    Vehicle --> Event
+    Policy --> Transport
+    Transport --> Worker
+    Worker --> Vehicle
+    Vehicle --> Ack
+    Worker --> Event
     Event --> Telemetry
+    Bus --> Telemetry
 ```
+
+`src/main.rs` is only a demo executable. `VehicleCommandBus` owns command
+orchestration. Validation and policy happen before transport. The
+`InProcessTransport` uses Tokio MPSC for in-process async messaging with a
+bounded queue. The background worker executes commands with
+`MockVehicleService`. `CommandAcknowledgement` returns the command outcome.
+`VehicleEvent` records lifecycle events, and `InMemoryTelemetry` stores those
+events in a shared in-memory sink.
+
+## Phase 1 Architecture Status
+
+Phase 1 is complete.
+
+The implemented architecture includes:
+
+- Local-first execution with `cargo test` and `cargo run`.
+- Rust 2024 edition.
+- Library-first architecture.
+- No Docker requirement.
+- No MQTT dependency.
+- No network server or broker.
+- Typed command model.
+- Command validation.
+- Policy engine.
+- `InProcessTransport` using bounded Tokio MPSC.
+- `BusMessage` for typed transport messages.
+- `oneshot` acknowledgement channels.
+- `VehicleCommandBus` service bus.
+- Background worker model.
+- `MockVehicleService`.
+- `CommandAcknowledgement`.
+- `VehicleEvent` and `VehicleEventKind`.
+- Shared `InMemoryTelemetry`.
+- Thin demonstration executable.
+- Passing unit and integration tests.
 
 ## Design Principles
 
-- Local-first development: the prototype must run with standard Rust tooling
-  on a developer machine. Docker may be added as an optional packaging or
-  integration-test convenience, but local execution must not depend on Docker.
-- Typed APIs: commands, events, acknowledgements, and errors are explicit Rust
-  types.
-- Small service boundaries: parsing, validation, policy, transport, telemetry,
-  and mock vehicle services remain separate.
-- Transport abstraction: core logic does not depend directly on MQTT, a broker,
-  or any specific network transport.
-- Safety gate first: commands are validated and policy-checked before reaching
-  mock vehicle services.
-- Idempotency: duplicate `command_id` values are rejected or treated
-  deterministically.
-- Deadline-aware: stale commands expire before execution.
-- Observable by default: command lifecycle events are logged with correlation
-  IDs.
-- TDD-friendly: business rules are easy to test without a network server.
-- Two-hour scope: the first implementation demonstrates judgment, not
-  production completeness.
-
-## Design Goals
-
-- Typed command and event APIs.
-- Clear separation of validation, policy, routing, execution, telemetry, and
-  errors.
-- Async routing with predictable shutdown and dropped-receiver behavior.
-- Explicit acknowledgement events.
-- Testable duplicate detection, expiry handling, unsafe-state blocking, and
-  telemetry emission.
-- No Docker, broker, or network server prerequisite for local development.
-
-## Phase 1 Architecture Confirmation
-
-Phase 1 deliberately uses a local-first, broker-free architecture. This is a
-design choice, not a limitation. The first prototype should demonstrate Rust
-service design clearly before adding any external messaging technology.
-
-Phase 1 intentionally uses:
-
-- Local-first execution.
-- No Docker requirement.
-- No MQTT broker.
-- No network server.
-- In-process Tokio MPSC.
-- Typed Rust command/event APIs.
-- Policy and safety gate before execution.
-- Acknowledgement events.
-- Telemetry sink.
-- Tests around validation, policy, async routing, and receiver-drop behavior.
-
-## Non-Goals
-
-- No real Ford, ECU, TCU, cloud, AAOS, CarPlay, Android Auto, or
-  SmartDeviceLink integration.
-- No MQTT client, MQTT broker, broker hardening, clustering, TLS,
-  authentication, or authorization in the first prototype.
-- No real D-Bus, gRPC, Protobuf, CAN, or Automotive Ethernet.
-- No persistent database.
-- No production authentication.
-- No UI.
-- No broad service framework.
+- Library-first: reusable business logic lives in `src/lib.rs` and the modules
+  it exports.
+- Thin executable: `src/main.rs` demonstrates the library and must not own
+  command, policy, transport, acknowledgement, service, or telemetry logic.
+- Typed APIs: commands, acknowledgements, telemetry events, and errors are
+  explicit Rust types.
+- Safety gate first: validation and policy run before commands reach the mock
+  vehicle service.
+- Bounded async routing: the in-process queue has explicit capacity and send
+  failures are typed outcomes.
+- Observable behavior: lifecycle events are recorded as `VehicleEvent` values
+  in `InMemoryTelemetry`.
+- Broker-free tests: the default test path has no Docker, MQTT, broker, or
+  network dependency.
 
 ## Module Design
 
 | Module | Responsibility |
 | --- | --- |
-| `src/lib.rs` | Library entry point exporting the prototype modules for reuse by tests and executables. |
-| `src/main.rs` | Demonstration executable for exercising the library. Phase 1 uses a minimal entry point to prove the service architecture. Phase 2 evolves this into a full CLI using `clap`, allowing commands, demos, and transport adapters to be exercised without changing the underlying library. |
-| `src/command.rs` | Command types, command envelope, parsing, and validation helpers. |
-| `src/event.rs` | Event and acknowledgement types. |
-| `src/service_bus.rs` | Async command routing, channel ownership, and receiver behavior. |
-| `src/policy.rs` | Policy decisions, safety gate, and duplicate command tracking. |
-| `src/telemetry.rs` | Telemetry event abstraction and in-memory test sink. |
-| `src/transport.rs` | Transport abstraction and first `InProcessTransport` implementation. |
-| `src/error.rs` | Typed error model for validation, policy, routing, and execution failures. |
-| `tests/command_tests.rs` | Command model tests, expanding into end-to-end command flow tests as Phase 1 progresses. |
+| `src/lib.rs` | Library entry point exporting reusable prototype modules for tests and executables. |
+| `src/main.rs` | Thin demonstration executable; Phase 2 can evolve it into a `clap` CLI while business logic remains in the library. |
+| `src/command.rs` | `CommandType`, `Command`, command construction, expiry helper, and command validation. |
+| `src/error.rs` | `CommandError` variants for validation, policy, bus send, service, and acknowledgement failures. |
+| `src/event.rs` | `CommandAcknowledgement` and `CommandStatus` types used to report command outcomes. |
+| `src/policy.rs` | `VehicleState` and `PolicyEngine`; tracks duplicate command IDs and blocks unsafe unlock while moving. |
+| `src/service_bus.rs` | `VehicleCommandBus`, `MockVehicleService`, background worker orchestration, acknowledgement handling, and telemetry recording. |
+| `src/telemetry.rs` | `VehicleEvent`, `VehicleEventKind`, and shared `InMemoryTelemetry` backed by `Arc<Mutex<Vec<VehicleEvent>>>`. |
+| `src/transport.rs` | `BusMessage` and `InProcessTransport` using bounded Tokio MPSC plus oneshot acknowledgement channels. |
 
 ## Library-First Architecture
 
-The prototype follows a library-first architecture.
+The prototype is intentionally library-first.
 
-The core implementation lives in the reusable library (`src/lib.rs`) while
-`src/main.rs` remains a thin executable responsible only for demonstrating and
-exercising the library.
+`src/lib.rs` exports the reusable modules used by tests and by the
+demonstration executable. `src/main.rs` is intentionally thin: it builds a
+`VehicleCommandBus`, submits a sample command, prints the returned
+`CommandAcknowledgement`, and prints recorded telemetry.
 
-Phase 1 intentionally keeps `main.rs` minimal to focus on service boundaries,
-validation, policy, transport abstraction, and testability.
-
-Phase 2 will evolve `main.rs` into a richer command-line interface using
-`clap`, exposing demonstrations, command submission, and optional transport
-adapters without changing the underlying library.
-
-## Phase 1 Implementation Estimate
-
-The Phase 1 prototype is expected to be approximately 500-900 lines of Rust
-across the planned modules and tests.
-
-With Codex assistance, this should be a 2-4 hour implementation. Without
-assistance, it is more likely a 4-6 hour implementation.
-
-The intent is not to build a framework. The intent is to demonstrate clean Rust
-service design, typed APIs, async command routing, validation, policy gates,
-acknowledgement events, telemetry, and testability.
-
-Rough sizing:
-
-```text
-Cargo/project setup: 30-50 LOC
-command.rs:         80-150 LOC
-event.rs:           40-80 LOC
-error.rs:           40-80 LOC
-policy.rs:          80-150 LOC
-transport.rs:       80-150 LOC
-service_bus.rs:     100-180 LOC
-telemetry.rs:       60-120 LOC
-lib.rs:             20-40 LOC
-main.rs:            40-80 LOC
-tests:              150-300 LOC
-```
+Phase 2 may evolve `main.rs` into a `clap` CLI for demos, command submission,
+and optional transport adapter exercises. Business logic must not move into
+`main.rs`; the CLI should call the library.
 
 ## Command Model
 
 The command envelope carries enough information for validation, policy,
-correlation, and acknowledgement:
+correlation, acknowledgement, and telemetry:
 
 ```text
 Command {
     command_id
+    vehicle_id
     command_type
     issued_at
     deadline
-    payload
 }
 ```
 
-Command types:
+Implemented Phase 1 command types:
 
-- LockDoors.
-- UnlockDoors.
-- StartClimate.
-- SetNavigationDestination.
-- RequestVehicleHealth.
+- `LockDoors`.
+- `UnlockDoors`.
+- `RequestVehicleHealth`.
 
-Validation rejects empty command IDs, unknown command types, expired deadlines,
-and missing payload fields required by the command type.
+Validation rejects:
 
-## Event Model
+- Empty `command_id`.
+- Empty `vehicle_id`.
+- Expired deadlines.
 
-The acknowledgement event preserves the command identity and final command
-status:
-
-```text
-CommandAcknowledged {
-    command_id
-    command_type
-    status
-    reason
-}
-```
-
-Status values include accepted, rejected, blocked, executed, and failed. The
-event model distinguishes validation rejection, policy rejection, and
-execution failure because each status has different operational meaning.
-
-## Policy and Safety Gates
+## Policy Model
 
 The policy layer decides whether a valid command is allowed under current mock
 vehicle state.
 
-Policy inputs include:
+Implemented Phase 1 policy behavior:
 
-- Vehicle moving or parked.
-- Door state.
-- Climate capability availability.
-- Previously seen command IDs.
-- Command deadline.
+- Reject duplicate `command_id` values.
+- Block `UnlockDoors` while the mock vehicle is moving.
+- Record allowed command IDs so later submissions can be treated
+  deterministically as duplicates.
 
-Policy decisions include allow, reject duplicate, reject expired, and block
-unsafe state. The policy layer is separate from validation so that malformed
-commands and unsafe commands produce distinct outcomes.
+Validation remains separate from policy. Expired or malformed commands are
+validation failures; unsafe commands are policy failures.
 
-## Transport Abstraction Pattern
+## Transport Design
 
-The design separates business logic from transport implementation:
-
-```text
-Business Logic
-        |
-Transport Interface
-        |
-Transport Implementation
-```
-
-The prototype can express that boundary with a trait similar to:
-
-```rust
-trait MessageTransport {
-    async fn publish(&self, topic: &str, payload: &[u8]) -> Result<(), TransportError>;
-    async fn subscribe(&self, topic: &str) -> Result<MessageStream, TransportError>;
-}
-```
-
-The first implementation is `InProcessTransport`, backed by Tokio channels.
-`MqttTransport` is a future adapter and should use the same command validation,
-policy, acknowledgement, and telemetry path.
-
-## Service Bus Design
-
-The service bus owns async command routing. It accepts validated and allowed
-commands, forwards them to a mock vehicle service, receives a result, and
-returns or publishes an acknowledgement event.
-
-Expected behavior:
-
-- Preserve command IDs through the full flow.
-- Handle dropped receivers without panicking.
-- Make send failures visible through typed errors and telemetry.
-- Avoid building a generic framework beyond the prototype's needs.
-
-## Why The Prototype Uses An In-Process Service Bus
-
-The first prototype intentionally uses Tokio MPSC rather than MQTT. This keeps
-the work focused on Rust service design, async ownership, backpressure, typed
-APIs, validation, policy gates, acknowledgement events, and telemetry.
-
-| Capability | Tokio MPSC | MQTT |
-| --- | --- | --- |
-| Latency | Very low | Broker/network hop |
-| Strong typing | Native Rust types | Serialized payloads |
-| Setup | None | Broker required |
-| Best fit | Service internals | Vehicle-to-cloud communication |
-| Prototype suitability | Excellent | Future extension |
-
-The first prototype focuses on service ownership and command flow. MQTT is
-treated as a future transport adapter rather than a foundational dependency.
-
-## Queue Design Principles
-
-### Bounded Queues
-
-Bounded channels are preferred wherever practical. They provide natural
-backpressure, prevent unbounded memory growth, and make runtime behavior more
-predictable.
-
-### Typed Payloads
-
-Commands and events should be Rust types rather than loosely structured
-messages. Typed payloads improve compile-time safety, refactoring confidence,
-and API clarity.
-
-### Ownership
-
-Each queue has multiple producers and a single logical consumer. The consumer
-owns processing responsibility and delegates domain behavior to the appropriate
-service.
-
-Queue managers own channel creation, receive loops, queue metrics, error
-logging, lifecycle management, and shutdown behavior. Business services own
-validation, state mutation, command handling, execution decisions, and
-persistence.
-
-### Backpressure
-
-Critical commands should use `send(...).await` rather than fire-and-forget
-patterns. Dropping, timing out, or failing a send should be an explicit design
-choice.
-
-### Observability
-
-Queues should expose queue depth, saturation, processing counts, failures, and
-latency. These signals make asynchronous behavior diagnosable during tests and
-local demos.
-
-## Safety Gate Pattern
-
-The command flow mirrors the Salus readiness and preflight pattern:
+The current transport boundary is concrete and local:
 
 ```text
 Command
-  -> validation
-  -> policy check
-  -> execution
+    ↓
+BusMessage
+    ↓
+InProcessTransport::publish(...)
+    ↓
+tokio::sync::mpsc::Sender<BusMessage>
 ```
 
-Salus applies the same shape to execution decisions:
+`InProcessTransport::new(capacity)` creates a bounded Tokio MPSC channel and
+returns the transport plus its receiver. Bounded queues provide natural
+backpressure and avoid unbounded memory growth during local tests and demos.
 
-```text
-Route
-  -> profitability
-  -> readiness
-  -> preflight
-  -> execution
-```
+`BusMessage` contains:
 
-For the vehicle command prototype, malformed, expired, duplicate, or unsafe
-commands should stop before reaching the mock vehicle service.
+- the typed `Command`.
+- a `tokio::sync::oneshot::Sender<CommandAcknowledgement>`.
 
-## Phase 2: MQTT Adapter Extension
+The oneshot channel lets the worker return one acknowledgement for the command
+without introducing a network protocol or broker.
 
-Phase 2 can add MQTT without changing the core command flow. MQTT represents a
-vehicle-to-cloud style message boundary in the local architecture. It is not
-used as in-process IPC, not required by the first prototype, and not treated as
-a claim about Ford internal systems.
+Tokio MPSC was chosen for Phase 1 because it demonstrates async message
+passing, ownership, bounded behavior, receiver shutdown, and testable failure
+handling while keeping the core service path strongly typed and local.
 
-Topic shape:
+## Service Bus Design
 
-```text
-vehicle/{vin}/commands
-vehicle/{vin}/command_ack
-vehicle/{vin}/telemetry
-vehicle/{vin}/health
-```
+`VehicleCommandBus` owns the Phase 1 command path:
 
-Phase 2 should add:
+1. Record `VehicleEventKind::CommandReceived`.
+2. Validate the command.
+3. Evaluate policy.
+4. Create a `BusMessage` and acknowledgement receiver.
+5. Publish through `InProcessTransport`.
+6. Record `VehicleEventKind::CommandRouted`.
+7. Await the `CommandAcknowledgement` from the worker.
 
-```text
-MqttTransport
-MqttCommandSubscriber
-MqttAcknowledgementPublisher
-Optional broker-backed integration tests
-Optional local broker run instructions
-```
+Validation failures return rejected acknowledgements. Policy failures return
+rejected or blocked acknowledgements depending on the error. Transport send
+failures return failed acknowledgements.
 
-The flow becomes:
+## Background Worker
 
-```text
-MQTT broker
-  -> vehicle/{vin}/commands
-  -> MqttTransport
-  -> command decode
-  -> validation
-  -> policy gate
-  -> service bus
-  -> mock vehicle service
-  -> acknowledgement event
-  -> vehicle/{vin}/command_ack
-```
+The background worker is spawned by `VehicleCommandBus::new`.
 
-The same validation, policy, telemetry, and acknowledgement logic must remain
-shared with `InProcessTransport`. MQTT must not bypass the Phase 1 command path.
+The worker:
 
-## Recommended MQTT Client Decision
+- receives `BusMessage` values from the Tokio MPSC receiver.
+- executes the command through `MockVehicleService`.
+- creates an executed or failed `CommandAcknowledgement`.
+- records `VehicleEventKind::CommandExecuted` on success.
+- records `VehicleEventKind::AcknowledgementEmitted`.
+- sends the acknowledgement through the message's oneshot sender.
 
-Recommended Phase 2 client: `rumqttc`.
+`MockVehicleService` is intentionally small. It succeeds for normal command
+IDs and returns `CommandError::ServiceUnavailable` when a command ID contains
+`fail`, giving tests and demos a deterministic service-failure path.
 
-Reasons:
+## Event And Telemetry Model
 
-- Pure Rust.
-- Backed by a Tokio async event loop.
-- Mature enough for a small adapter.
-- Supports the likely local broker demo path.
-- Does not require writing a broker.
+Telemetry is not the event itself.
 
-Do not build an MQTT broker/server in Phase 2 unless explicitly requested.
+`VehicleEvent` represents a domain event. `VehicleEventKind` names the event
+type. `InMemoryTelemetry` records `VehicleEvent` values in shared memory using
+`Arc<Mutex<Vec<VehicleEvent>>>`, allowing the service bus and background
+worker to write to the same sink.
 
-## MQTT Server/Broker Options
+Implemented event kinds:
 
-### Option A - External Local Broker
+- `CommandReceived`.
+- `ValidationRejected`.
+- `PolicyBlocked`.
+- `CommandRouted`.
+- `AcknowledgementEmitted`.
+- `CommandExecuted`.
+- `BusSendFailed`.
+- `ReceiverDropped`.
 
-Use a local broker such as Mosquitto or EMQX.
-
-Best for:
-
-- Fastest Phase 2.
-- Realistic MQTT client behavior.
-- Broker-backed integration tests.
-- Keeping Rust code focused on adapter logic.
-
-Expected effort:
-
-```text
-1-2 hours for broker run docs
-3-5 hours for MqttTransport + tests
-```
-
-### Option B - Rust MQTT Server/Broker
-
-Use a Rust server-capable library such as `mqtt-endpoint-tokio` or a broker
-crate.
-
-Best for:
-
-- Demonstrating protocol/server implementation.
-- Deeper MQTT internals.
-
-Tradeoff:
-
-- Much larger scope.
-- Less relevant to Ford infotainment service design.
-- Can distract from API, policy, and service boundaries.
-
-Expected effort:
-
-```text
-6-12+ hours for a basic local server path
-much longer for production-quality behavior
-```
-
-## Phase 2 Acceptance Criteria
-
-Phase 2 is complete when:
-
-```text
-MqttTransport exists behind an optional feature or separate module
-Phase 1 tests still pass without broker
-broker-backed tests are opt-in
-commands can be consumed from vehicle/{vin}/commands
-acks can be published to vehicle/{vin}/command_ack
-telemetry still works locally
-MQTT does not bypass validation or policy
-```
+The current telemetry model is deterministic and test-friendly. It is not a
+production logging, tracing, metrics, or persistence system.
 
 ## Error Handling
 
-Typed errors should represent:
+Typed errors are defined in `CommandError`:
 
-- Validation failure.
-- Duplicate command.
-- Policy rejection.
-- Service unavailable.
-- Bus send failure.
-- Execution failure.
-- Acknowledgement failure.
+- `MissingCommandId`.
+- `MissingVehicleId`.
+- `Expired`.
+- `UnsafeState`.
+- `Duplicate`.
+- `BusSendFailed`.
+- `ServiceUnavailable`.
+- `AckFailed`.
 
 Typed errors make tests precise and keep downstream callers from parsing
 strings to understand behavior.
 
-## Telemetry
-
-The telemetry abstraction records events that matter during debugging:
-
-- Command received.
-- Validation rejected.
-- Policy blocked.
-- Command routed.
-- Acknowledgement emitted.
-- Bus send failed.
-- Receiver dropped.
-
-An in-memory telemetry sink is sufficient for the prototype and keeps tests
-deterministic.
-
-## Testing Strategy
-
-Primary tests:
-
-- Valid lock command accepted.
-- Expired command rejected.
-- Duplicate `command_id` rejected.
-- Unsafe command blocked by policy.
-- Command produces acknowledgement event.
-- Service bus handles dropped receiver without panicking.
-
-Additional coverage can include missing navigation destination, telemetry
-assertions, mock service failure, and command ID preservation through the full
-flow.
-
-Future MQTT integration tests should be separated from unit tests because they
-require a broker. They should verify that a command published to
-`vehicle/{vin}/commands` produces an acknowledgement on
-`vehicle/{vin}/command_ack`.
-
 ## Local Execution Model
 
-The local developer path should be:
+The local developer path is:
 
 ```text
 cargo test
-cargo run --bin infotainment-bus
+cargo run
 ```
 
-`cargo test` should not require a broker, Docker, or any network server.
-Broker-backed tests can be added later behind an explicit feature, ignored
-test marker, or integration command so local development remains fast and
-deterministic.
+`cargo test` and `cargo run` require no broker, Docker, MQTT client, MQTT
+server, or network service.
 
-## Phase 1 Completion Criteria
+## Testing Strategy
 
-Phase 1 is complete when:
+The current test suite covers:
 
-```text
-cargo test passes
-cargo run works locally
-no broker is required
-no Docker is required
-typed APIs are clear
-policy and safety gates are tested
-acknowledgements are emitted
-telemetry is visible
-receiver-drop behavior is safe
-```
+- Command construction.
+- Missing command ID rejection.
+- Missing vehicle ID rejection.
+- Expired command rejection.
+- Acknowledgement construction.
+- Duplicate command rejection.
+- Unsafe unlock while moving blocked by policy.
+- `InProcessTransport` publish behavior.
+- Receiver-drop send failure behavior.
+- End-to-end service bus execution.
+- Expired command rejection before transport.
+- Unsafe command blocking before transport.
+- Duplicate command rejection through the service bus.
+- Telemetry lifecycle recording.
+- Direct `InMemoryTelemetry` recording.
 
-## Future Extensions
+## Future Extension Points
 
-Potential future adapters:
+Phase 2 extends Phase 1 rather than replacing it.
 
-- MQTT with `rumqttc`.
-- D-Bus.
-- gRPC.
-- NATS.
-- Kafka.
-
-The initial prototype intentionally avoids these adapters to maintain a
-two-hour implementation scope. It demonstrates service architecture, ownership
-boundaries, validation, observability, safety gates, and queue behavior rather
-than broker technology selection.
-
-## Appendix: Relevant Libraries and Documentation
-
-These links support future extension and design discussion. The first
-implementation should remain broker-free and should only require `cargo test`
-and `cargo run`.
-
-### Core Prototype
-
-- Tokio - async runtime and MPSC channels:
-  [https://tokio.rs/](https://tokio.rs/)
-- Tokio MPSC docs:
-  [https://docs.rs/tokio/latest/tokio/sync/mpsc/](https://docs.rs/tokio/latest/tokio/sync/mpsc/)
-- thiserror - typed Rust errors:
-  [https://docs.rs/thiserror/](https://docs.rs/thiserror/)
-- tracing - structured Rust telemetry:
-  [https://docs.rs/tracing/](https://docs.rs/tracing/)
-- serde - optional JSON serialization:
-  [https://serde.rs/](https://serde.rs/)
-
-### Optional MQTT Adapter
-
-MQTT is not required for the first prototype. These are future adapter options
-only. Do not make MQTT dependencies part of Phase 1.
-
-| Library | Link | Phase 2 Use |
+| Component | Phase 1 | Phase 2+ |
 | --- | --- | --- |
-| `rumqttc` | [https://docs.rs/rumqttc/latest/rumqttc/](https://docs.rs/rumqttc/latest/rumqttc/) | Recommended MQTT client adapter. |
-| `mqrstt` | [https://docs.rs/mqrstt/](https://docs.rs/mqrstt/) | Alternative pure Rust MQTT client, useful if MQTT v5-specific behavior is desired. |
-| `mqtt-protocol-core` | [https://docs.rs/mqtt-protocol-core/](https://docs.rs/mqtt-protocol-core/) | Protocol-level Sans-I/O library; useful for low-level protocol work, not needed for adapter-first Phase 2. |
-| `mqtt-endpoint-tokio` | [https://docs.rs/mqtt-endpoint-tokio/](https://docs.rs/mqtt-endpoint-tokio/) | Tokio client/server endpoint library; consider only if server-side MQTT behavior becomes a goal. |
+| External transport | None | MQTT adapter using `rumqttc` |
+| Internal transport | `InProcessTransport` using Tokio MPSC | Still retained for in-application routing |
+| Vehicle service | `MockVehicleService` | Real or simulated vehicle subsystem adapter |
+| Telemetry | `InMemoryTelemetry` | `tracing`, OpenTelemetry, MQTT telemetry topic |
+| Executable | Minimal `main.rs` demo | `clap` CLI |
+| Serialization | None required | JSON command and acknowledgement payloads |
+| Broker | None | External local broker such as Mosquitto or EMQX |
+| Tests | Broker-free integration tests | Optional broker-backed integration tests |
 
-Notes:
+## Phase 2: MQTT Adapter Extension
 
-- `rumqttc` is the preferred Phase 2 client adapter.
-- `mqtt-endpoint-tokio` is interesting for client/server endpoint work but is
-  more than the first MQTT extension needs.
-- `mqtt-protocol-core` is lower-level and useful if protocol parsing or custom
-  broker behavior becomes a learning goal.
-- Do not make MQTT dependencies part of Phase 1.
+Recommended Phase 2: MQTT adapter around the existing service bus.
 
-### Optional Future Transports
+MQTT can be added without changing the core command flow. MQTT represents an
+external integration boundary around the existing architecture.
 
-- D-Bus specification:
-  [https://dbus.freedesktop.org/doc/dbus-specification.html](https://dbus.freedesktop.org/doc/dbus-specification.html)
-- gRPC Rust docs:
-  [https://grpc.io/docs/languages/rust/](https://grpc.io/docs/languages/rust/)
-- Protocol Buffers:
-  [https://protobuf.dev/](https://protobuf.dev/)
-- NATS Rust client:
-  [https://docs.rs/async-nats/](https://docs.rs/async-nats/)
-- Kafka Rust client:
-  [https://docs.rs/rdkafka/](https://docs.rs/rdkafka/)
+MQTT must not replace:
+
+- `VehicleCommandBus`.
+- command validation.
+- `PolicyEngine`.
+- `InProcessTransport`.
+- background worker.
+- `CommandAcknowledgement`.
+- `VehicleEvent`.
+- `InMemoryTelemetry`.
+
+MQTT should wrap the current architecture by converting external topic
+messages into internal `Command` values and publishing resulting
+acknowledgements back to MQTT.
+
+```mermaid
+flowchart TD
+    Broker["External MQTT broker"]
+    TopicIn["vehicle/{vin}/commands"]
+    Subscriber["MqttCommandSubscriber"]
+    Decoder["Command decoder"]
+    Bus["VehicleCommandBus"]
+    Validation["Validation"]
+    Policy["PolicyEngine"]
+    InternalTransport["InProcessTransport<br/>Tokio MPSC"]
+    Worker["Background worker"]
+    Vehicle["MockVehicleService"]
+    Ack["CommandAcknowledgement"]
+    Publisher["MqttAcknowledgementPublisher"]
+    TopicOut["vehicle/{vin}/command_ack"]
+
+    Broker --> TopicIn
+    TopicIn --> Subscriber
+    Subscriber --> Decoder
+    Decoder --> Bus
+    Bus --> Validation
+    Validation --> Policy
+    Policy --> InternalTransport
+    InternalTransport --> Worker
+    Worker --> Vehicle
+    Vehicle --> Ack
+    Ack --> Publisher
+    Publisher --> TopicOut
+    TopicOut --> Broker
+```
+
+Broker decision:
+
+- Use an external local broker first.
+- Recommended local broker: Mosquitto or EMQX.
+- Recommended Rust client: `rumqttc`.
+- Do not build a Rust MQTT broker/server in Phase 2.
+- `mqtt-endpoint-tokio` remains future research only if server-side MQTT
+  behavior becomes an explicit goal.
+- Broker-backed tests should be opt-in. Phase 1 tests must continue to pass
+  without a broker.
+
+## CLI Evolution
+
+Phase 2 can evolve the thin demonstration executable into a `clap` CLI for:
+
+- running local demos.
+- submitting commands.
+- selecting optional transport adapters.
+- printing acknowledgements and telemetry.
+
+The CLI must stay as an executable wrapper around the library. It should not
+become the owner of domain logic.
+
+## Phase 1 Summary
+
+Phase 1 implements a local-first Rust 2024 command/event service bus with a
+typed command model, validation, policy, bounded Tokio MPSC transport,
+`BusMessage`, background worker, mock vehicle service, oneshot
+acknowledgements, shared in-memory telemetry, a thin demonstration executable,
+and passing tests.
+
+## Non-Goals
+
+- No Ford internal architecture model.
+- No real vehicle, ECU, TCU, cloud, AAOS, CarPlay, Android Auto, or
+  SmartDeviceLink integration.
+- No MQTT client, MQTT broker, broker hardening, clustering, TLS,
+  authentication, or authorization in Phase 1.
+- No real D-Bus, gRPC, Protobuf, CAN, or Automotive Ethernet.
+- No persistent database.
+- No production authentication.
+- No UI.
+- No broad service framework.

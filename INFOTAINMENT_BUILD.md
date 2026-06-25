@@ -25,18 +25,19 @@ Completed:
       Rust prototype.
 - [x] Stage 6 - source asset cleanup completed; retained images moved into
       section-specific image folders.
+- [x] Stage 7 - documentation organization changes committed.
+- [x] Stage 8 - Phase 1 Rust command/event service-bus prototype implemented.
 
 Remaining:
 
-- [ ] Stage 7 - review, stage, and commit documentation changes.
-- [ ] Stage 8 - continue and complete the Rust command/event service-bus
-      prototype.
+- [ ] Phase 2 - recommended MQTT adapter around the existing service bus,
+      plus optional `clap` CLI work.
 
 ## Existing Repository State
 
-The repository is currently documentation-led. It has the planned documentation
-structure and a minimal Rust prototype skeleton, but the full command/event
-service-bus implementation is not complete yet.
+The repository remains documentation-led, and the Phase 1 implementation is now
+complete. The current Rust prototype is the source of truth for the coding
+documentation.
 
 Current filesystem state:
 
@@ -71,10 +72,21 @@ Current filesystem state:
 |           `-- A2_7_SalusWalkthrough.png
 |-- src
 |   |-- command.rs
+|   |-- error.rs
+|   |-- event.rs
 |   |-- lib.rs
-|   `-- main.rs
+|   |-- main.rs
+|   |-- policy.rs
+|   |-- service_bus.rs
+|   |-- telemetry.rs
+|   `-- transport.rs
 `-- tests
-    `-- command_tests.rs
+    |-- command_tests.rs
+    |-- events_test.rs
+    |-- policy_tests.rs
+    |-- service_bus_tests.rs
+    |-- telemetry_tests.rs
+    `-- transport_tests.rs
 ```
 
 Current code status:
@@ -90,9 +102,18 @@ Current code status:
 - [x] Root `src/` exists.
 - [x] `src/lib.rs` exists as the reusable library entry point.
 - [x] `src/main.rs` exists as a minimal demonstration executable.
-- [x] `src/command.rs` exists with an initial command model.
-- [x] Root `tests/` exists with `tests/command_tests.rs`.
-- [ ] The full command/event service-bus prototype is not complete yet.
+- [x] `src/command.rs` implements the typed command model and validation.
+- [x] `src/error.rs` implements typed command errors.
+- [x] `src/event.rs` implements `CommandAcknowledgement` and statuses.
+- [x] `src/policy.rs` implements the policy engine and mock vehicle state.
+- [x] `src/service_bus.rs` implements the service bus, background worker, and
+      mock vehicle service.
+- [x] `src/telemetry.rs` implements `VehicleEvent`, `VehicleEventKind`, and
+      shared `InMemoryTelemetry`.
+- [x] `src/transport.rs` implements `BusMessage` and `InProcessTransport`.
+- [x] Root `tests/` contains command, event, policy, service bus, telemetry,
+      and transport tests.
+- [x] The Phase 1 command/event service-bus prototype is complete.
 
 ## Operating Rules
 
@@ -143,7 +164,7 @@ Completed audit findings:
 - [x] Useful source material from `docs/assets/` needed to be merged into final
       docs or moved into final image folders.
 - [x] `docs/src` had no lasting purpose and should be removed.
-- [x] The Rust prototype should later use root-level `Cargo.toml`, `src/`, and
+- [x] The Rust prototype now uses root-level `Cargo.toml`, `src/`, and
       `tests/`.
 
 Acceptance checks:
@@ -285,7 +306,7 @@ Acceptance checks:
 
 ## Stage 5 - Coding Docs - Complete
 
-Objective: define the Rust prototype without implementing it yet.
+Objective: define the Rust prototype before Phase 1 implementation.
 
 Completed tasks:
 
@@ -293,10 +314,9 @@ Completed tasks:
 - [x] Updated `docs/coding/DESIGN.md`.
 - [x] Updated `docs/coding/IMPLEMENTATION.md`.
 - [x] Defined the prototype as a small Rust vehicle command/event service bus.
-- [x] Kept the target implementation scoped to approximately two hours of
-      focused coding.
-- [x] Stated that the full prototype should not be generated during the
-      documentation stage.
+- [x] Kept the target implementation scoped for a focused local prototype.
+- [x] Used the documentation stage to establish implementation boundaries
+      before coding.
 - [x] Described prototype goals, scope, non-goals, architecture, modules,
       command model, event model, policy gates, telemetry, tests, and
       implementation steps.
@@ -308,22 +328,23 @@ Completed tasks:
 - [x] Selected an in-process Tokio service bus for the first implementation.
 - [x] Added a transport abstraction with `InProcessTransport` first and
       `MqttTransport` as a future option.
-- [x] Defined MQTT as a future adapter around the command/event flow, not as
-      the core domain model or a first-step dependency.
+- [x] Defined Recommended Phase 2 as an MQTT adapter around the existing
+      service bus, not as the core domain model or a first-step dependency.
 - [x] Selected `rumqttc` as the preferred future Rust MQTT client.
-- [x] Documented `mqrstt`, `mqtt-protocol-core`, and `mqtt-endpoint-tokio` as
-      alternatives.
+- [x] Documented Mosquitto or EMQX as the recommended external local broker
+      path.
+- [x] Documented `mqtt-endpoint-tokio` as future research only if server-side
+      MQTT behavior becomes an explicit goal.
 - [x] Added relevant library and documentation appendices to
       `docs/coding/DESIGN.md` and `docs/coding/IMPLEMENTATION.md`.
 - [x] Added Phase 1 architecture confirmation covering local-first execution,
       no Docker, no broker, no network server, Tokio MPSC, typed APIs, policy
       gates, acknowledgements, telemetry, and receiver-drop tests.
-- [x] Added Phase 1 implementation estimates, including expected line-count
-      ranges and rough implementation time.
+- [x] Added Phase 1 implementation guidance and module boundaries.
 - [x] Added Phase 2 MQTT adapter extension guidance without changing the Phase
       1 architecture.
-- [x] Clarified that Phase 2 should prefer a `rumqttc` client adapter with an
-      external local broker before considering any Rust MQTT server/broker.
+- [x] Clarified that Phase 2 should prefer a `rumqttc` client adapter with
+      Mosquitto or EMQX before considering any Rust MQTT server/broker.
 - [x] Added Phase 2 acceptance criteria requiring opt-in broker tests and shared
       validation, policy, telemetry, and acknowledgement logic.
 - [x] Added library-first architecture with `src/lib.rs` as the reusable module
@@ -331,53 +352,66 @@ Completed tasks:
 - [x] Scoped `clap` CLI evolution to Phase 2 documentation instead of Phase 1
       implementation work.
 
-Planned prototype flow:
+Implemented Phase 1 prototype flow:
 
 ```text
-Client / HMI
-  -> command parser
-  -> validation
-  -> policy / safety gate
-  -> in-process Tokio service bus
-  -> mock vehicle service
-  -> acknowledgement event
-  -> telemetry log
+Command
+    ↓
+Validation
+    ↓
+Policy
+    ↓
+InProcessTransport (Tokio MPSC)
+    ↓
+Background Worker
+    ↓
+MockVehicleService
+    ↓
+CommandAcknowledgement
+    ↓
+VehicleEvent
+    ↓
+InMemoryTelemetry
 ```
 
-Target Stage 8 module layout:
+Implemented Phase 1 module layout:
 
 ```text
 Cargo.toml
 src/lib.rs
 src/main.rs
 src/command.rs
+src/error.rs
 src/event.rs
-src/service_bus.rs
 src/policy.rs
+src/service_bus.rs
 src/telemetry.rs
 src/transport.rs
-src/error.rs
 tests/command_tests.rs
+tests/events_test.rs
+tests/policy_tests.rs
+tests/service_bus_tests.rs
+tests/telemetry_tests.rs
+tests/transport_tests.rs
 ```
 
-Planned command examples:
+Implemented command examples:
 
 ```text
 LockDoors
 UnlockDoors
-StartClimate
-SetNavigationDestination
 RequestVehicleHealth
 ```
 
-Planned tests for Stage 8:
+Implemented Stage 8 tests:
 
-- [ ] Valid lock command is accepted.
-- [ ] Expired command is rejected.
-- [ ] Duplicate `command_id` is rejected.
-- [ ] Unsafe command is blocked by policy.
-- [ ] Command produces acknowledgement event.
-- [ ] Service bus does not panic when receiver is dropped.
+- [x] Valid lock command is accepted.
+- [x] Expired command is rejected.
+- [x] Duplicate `command_id` is rejected.
+- [x] Unsafe command is blocked by policy.
+- [x] Command produces acknowledgement event.
+- [x] Service bus handles receiver-drop behavior without panicking.
+- [x] Telemetry records command lifecycle events.
 
 Acceptance checks:
 
@@ -386,7 +420,7 @@ Acceptance checks:
 - [x] The prototype remains small enough for an interview discussion.
 - [x] The design demonstrates typed Rust APIs, async routing, validation,
       policy gates, acknowledgements, telemetry, and tests.
-- [x] The implementation itself has not been generated yet.
+- [x] The implementation now matches the documented Phase 1 architecture.
 
 ## Stage 6 - Documentation Cleanup - Complete
 
@@ -422,22 +456,22 @@ Acceptance checks:
       `docs/assets/`.
 - [x] `docs/src` has been removed because the root will hold future Rust code.
 
-## Stage 7 - Commit Changes - Remaining
+## Stage 7 - Commit Changes - Complete
 
 Objective: use clean commits so the build plan and documentation organization
 have understandable project history.
 
-Tasks:
+Completed tasks:
 
-- [ ] Review `git status`.
-- [ ] Review the full git diff.
-- [ ] Ensure no accidental large or unreferenced files are included.
-- [ ] Verify Markdown links and image references.
-- [ ] Stage `INFOTAINMENT_BUILD.md` for the build plan commit.
-- [ ] Commit the build plan separately.
-- [ ] Stage README and `docs/` changes for the documentation organization
+- [x] Review `git status`.
+- [x] Review the full git diff.
+- [x] Ensure no accidental large or unreferenced files are included.
+- [x] Verify Markdown links and image references.
+- [x] Stage `INFOTAINMENT_BUILD.md` for the build plan commit.
+- [x] Commit the build plan separately.
+- [x] Stage README and `docs/` changes for the documentation organization
       commit.
-- [ ] Commit Stages 1-6 documentation and asset organization separately.
+- [x] Commit Stages 1-6 documentation and asset organization separately.
 
 Suggested commit messages:
 
@@ -448,16 +482,15 @@ docs: organize Ford infotainment interview preparation
 
 Acceptance checks:
 
-- [ ] The build plan commit contains `INFOTAINMENT_BUILD.md`.
-- [ ] The documentation organization commit contains README and `docs/`
+- [x] The build plan commit contains `INFOTAINMENT_BUILD.md`.
+- [x] The documentation organization commit contains README and `docs/`
       changes.
-- [ ] Both commit messages are concise and match their scopes.
-- [ ] The working tree is clean after commit.
+- [x] Both commit messages are concise and match their scopes.
+- [x] The working tree is clean after commit.
 
-## Stage 8 - Rust Prototype - Remaining
+## Stage 8 - Phase 1 Rust Prototype - Complete
 
-Objective: continue implementing the Rust prototype incrementally from the
-current skeleton.
+Objective: implement the local-first Rust command/event service-bus prototype.
 
 Implementation source of truth:
 
@@ -465,56 +498,58 @@ Implementation source of truth:
 - `docs/coding/DESIGN.md`
 - `docs/coding/IMPLEMENTATION.md`
 
-Tasks:
+Completed tasks:
 
 - [x] Create root `Cargo.toml`.
 - [x] Create root `src/`.
 - [x] Create `src/lib.rs` as the reusable library entry point.
 - [x] Keep `src/main.rs` minimal for the Phase 1 demonstration executable.
 - [x] Populate or reuse root `tests/` for integration tests.
-- [ ] Add dependencies for Tokio, thiserror, tracing, and optional serde if
-      needed by the implementation.
-- [ ] Implement typed command APIs.
-- [ ] Implement typed event APIs.
-- [ ] Implement validation.
-- [ ] Implement policy gates for duplicates, expiry, and unsafe states.
-- [ ] Implement `MessageTransport` or equivalent transport boundary.
-- [ ] Implement `InProcessTransport` over Tokio channels.
-- [ ] Implement async command/event routing.
-- [ ] Implement a mock vehicle service.
-- [ ] Implement acknowledgement events.
-- [ ] Implement telemetry logging.
-- [ ] Implement tests for the planned command flows.
-- [ ] Ensure `cargo test` runs locally without Docker.
-- [ ] Ensure `cargo run` runs locally without Docker and without a broker.
-- [ ] Keep MQTT out of the first implementation except as documented future
+- [x] Add the needed dependencies: Tokio and thiserror.
+- [x] Implement typed command APIs.
+- [x] Implement typed acknowledgement APIs.
+- [x] Implement validation.
+- [x] Implement policy gates for duplicates and unsafe states.
+- [x] Keep expiry handling in command validation.
+- [x] Implement `BusMessage` and `InProcessTransport` as the transport boundary.
+- [x] Implement `InProcessTransport` over Tokio MPSC channels.
+- [x] Implement async command/event routing.
+- [x] Implement a mock vehicle service.
+- [x] Implement acknowledgement events.
+- [x] Implement `VehicleEvent`, `VehicleEventKind`, and `InMemoryTelemetry`.
+- [x] Implement tests for the command flows.
+- [x] Ensure `cargo test` runs locally without Docker.
+- [x] Ensure `cargo run` runs locally without Docker and without a broker.
+- [x] Keep MQTT out of the first implementation except as documented future
       design context.
-- [ ] Leave the richer `clap`-based CLI for Phase 2.
-- [ ] Keep the prototype small enough to explain in an interview.
+- [x] Leave the richer `clap`-based CLI for Phase 2.
+- [x] Keep the prototype small enough to explain in an interview.
 
 Non-goals for Stage 8:
 
-- [ ] Do not model Ford internal architecture.
-- [ ] Do not require Docker.
-- [ ] Do not require an MQTT broker.
-- [ ] Do not implement MQTT as part of the first local prototype.
-- [ ] Do not integrate with real vehicles, ECUs, CAN, TCU, AAOS, CarPlay,
+- [x] Do not model Ford internal architecture.
+- [x] Do not require Docker.
+- [x] Do not require an MQTT broker.
+- [x] Do not implement MQTT as part of the first local prototype.
+- [x] Do not integrate with real vehicles, ECUs, CAN, TCU, AAOS, CarPlay,
       Android Auto, SmartDeviceLink, cloud services, or production auth.
 
 Acceptance checks:
 
-- [ ] The prototype builds with `cargo build`.
-- [ ] The tests pass with `cargo test`.
-- [ ] The demo runs with `cargo run`.
-- [ ] The code demonstrates typed Rust APIs, async command/event routing,
+- [x] The prototype builds with `cargo build`.
+- [x] Formatting passes with `cargo fmt --check`.
+- [x] The tests pass with `cargo test`.
+- [x] The demo runs with `cargo run`.
+- [x] Diff whitespace validation passes with `git diff --check`.
+- [x] The code demonstrates typed Rust APIs, async command/event routing,
       validation, policy gates, acknowledgement events, telemetry, and tests.
-- [ ] The implementation avoids unsupported claims about Ford internal systems.
-- [ ] The repository remains documentation-led and interview-focused.
+- [x] The implementation avoids unsupported claims about Ford internal systems.
+- [x] The repository remains documentation-led and interview-focused.
 
-## Target Repository Layout After Stage 8
+## Current Repository Layout After Stage 8
 
-Stage 8 should add the Rust prototype at the repository root while preserving
-the documentation structure:
+Stage 8 added the Rust prototype at the repository root while preserving the
+documentation structure:
 
 ```text
 .
@@ -539,7 +574,12 @@ the documentation structure:
 |   |-- telemetry.rs
 |   `-- transport.rs
 `-- tests
-    `-- command_tests.rs
+    |-- command_tests.rs
+    |-- events_test.rs
+    |-- policy_tests.rs
+    |-- service_bus_tests.rs
+    |-- telemetry_tests.rs
+    `-- transport_tests.rs
 ```
 
 ## Final Documentation Acceptance Criteria
@@ -551,8 +591,7 @@ the documentation structure:
       folder.
 - [x] The plan reflects that `docs/assets/` was processed and removed.
 - [x] The plan reflects that `docs/src` was removed.
-- [x] The plan reflects that the Rust prototype skeleton exists but is not yet
-      complete.
+- [x] The plan reflects that the Phase 1 Rust prototype is complete.
 - [x] The plan supports working with Codex step by step.
 - [x] The repository stays focused on Ford interview preparation and portfolio
       review.
@@ -560,8 +599,12 @@ the documentation structure:
 
 ## Remaining Work Summary
 
-- [ ] Commit the build plan and documentation changes.
-- [ ] Implement the root Rust prototype using the coding docs as the source of
-      truth.
-- [ ] Verify the final prototype with `cargo build`, `cargo test`, and
-      `cargo run`.
+- [ ] Phase 2 can add a `clap` CLI wrapper around the library.
+- [ ] Recommended Phase 2: MQTT adapter around the existing service bus.
+- [ ] Phase 2 MQTT should use `rumqttc` with an external local broker such as
+      Mosquitto or EMQX.
+- [ ] Phase 2 should not build a Rust MQTT broker/server; `mqtt-endpoint-tokio`
+      remains future research only if server-side MQTT behavior becomes an
+      explicit goal.
+- [ ] Broker-backed MQTT tests, if added, should remain opt-in and must not
+      replace local Phase 1 tests.

@@ -45,9 +45,9 @@ software, test, and platform stakeholders.
 - [Salus Walkthrough](docs/walkthrough/README.md): a standalone explanation of
   Salus runtime responsibilities and the systems patterns that transfer to
   infotainment service design.
-- [Coding Prototype](docs/coding/README.md): a small Rust command/event service
-  bus design package covering commands, events, policy gates, telemetry,
-  errors, and tests.
+- [Coding Prototype](docs/coding/README.md): the implemented Phase 1 Rust
+  command/event service-bus prototype covering commands, validation, policy
+  gates, transport, acknowledgements, telemetry, errors, and tests.
 - [Methodologies](docs/methodologies/README.md): engineering standards for
   SOLID design, TDD, API versioning, documentation, code review, pair
   programming, Agile delivery, and maintainable Rust services.
@@ -76,13 +76,38 @@ connected vehicle command/event paths.
 
 ## Coding Prototype Summary
 
-The coding design proposes a small, reviewable Rust service-bus prototype. The
-prototype accepts typed vehicle commands, validates them, checks policy,
-routes accepted commands through an async service bus, calls a mock vehicle
-service, emits acknowledgement events, and records telemetry.
+The Phase 1 coding prototype is implemented as a small, reviewable Rust 2024
+service-bus example. It accepts typed vehicle commands, validates them, checks
+policy, routes allowed commands through `InProcessTransport` over bounded Tokio
+MPSC, executes them with a `MockVehicleService`, returns
+`CommandAcknowledgement` values through oneshot channels, and records
+`VehicleEvent` values in shared `InMemoryTelemetry`.
 
-The prototype is intentionally scoped as a design and implementation plan, not
-a production vehicle platform.
+The prototype is library-first: `src/lib.rs` exports reusable business logic
+and `src/main.rs` is a thin demonstration executable. It runs with `cargo test`
+and `cargo run` without Docker, MQTT, a broker, or any network service.
+
+Recommended Phase 2: MQTT adapter around the existing service bus. MQTT should
+wrap the current architecture rather than replace validation, policy,
+`InProcessTransport`, acknowledgements, `VehicleEvent`, or
+`InMemoryTelemetry`.
+
+Current Rust modules:
+
+```text
+src/lib.rs
+src/main.rs
+src/command.rs
+src/error.rs
+src/event.rs
+src/policy.rs
+src/service_bus.rs
+src/telemetry.rs
+src/transport.rs
+```
+
+The prototype is intentionally scoped as an interview-friendly local
+implementation, not a production vehicle platform.
 
 ## Methodology Summary
 
