@@ -3,3 +3,4 @@ pub mod error;
 pub mod event;
 pub mod policy;
 pub mod telemetry;
+pub mod transport;

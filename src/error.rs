@@ -16,4 +16,7 @@ pub enum CommandError {
 
     #[error("duplicate command_id")]
     Duplicate,
+
+    #[error("bus send failed")]
+    BusSendFailed,
 }
