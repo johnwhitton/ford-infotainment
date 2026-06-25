@@ -13,6 +13,9 @@ mod command_flow_tests;
 #[path = "mqtt/publisher_tests.rs"]
 mod publisher_tests;
 
+#[path = "mqtt/runtime_tests.rs"]
+mod runtime_tests;
+
 #[path = "mqtt/subscriber_tests.rs"]
 mod subscriber_tests;
 
