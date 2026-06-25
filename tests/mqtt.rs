@@ -1,6 +1,9 @@
 #[path = "mqtt/adapter_tests.rs"]
 mod adapter_tests;
 
+#[path = "mqtt/broker_smoke_tests.rs"]
+mod broker_smoke_tests;
+
 #[path = "mqtt/client_tests.rs"]
 mod client_tests;
 
