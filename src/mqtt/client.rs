@@ -1,6 +1,6 @@
 use std::time::{Duration, Instant};
 
-use rumqttc::{Client, Connection, Event, MqttOptions, Packet, Publish};
+use rumqttc::{Client, ClientError, Connection, Event, MqttOptions, Packet, Publish, QoS};
 
 pub struct MqttClient {
     client: Client,
@@ -18,6 +18,10 @@ impl MqttClient {
 
     pub fn client(&self) -> &Client {
         &self.client
+    }
+
+    pub fn publish(&self, topic: &str, payload: &str) -> Result<(), ClientError> {
+        self.client.publish(topic, QoS::AtLeastOnce, false, payload)
     }
 
     /// Returns the next MQTT publish packet received within the timeout.
