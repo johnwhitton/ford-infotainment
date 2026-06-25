@@ -1,17 +1,18 @@
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub enum TelemetryKind {
+pub enum VehicleEventKind {
     CommandReceived,
     ValidationRejected,
     PolicyBlocked,
     CommandRouted,
     AcknowledgementEmitted,
+    CommandExecuted,
     BusSendFailed,
     ReceiverDropped,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct TelemetryEvent {
-    pub kind: TelemetryKind,
+pub struct VehicleEvent {
+    pub kind: VehicleEventKind,
     pub command_id: Option<String>,
     pub vehicle_id: Option<String>,
     pub message: String,
@@ -19,15 +20,15 @@ pub struct TelemetryEvent {
 
 #[derive(Debug, Clone, Default)]
 pub struct InMemoryTelemetry {
-    events: Vec<TelemetryEvent>,
+    events: Vec<VehicleEvent>,
 }
 
 impl InMemoryTelemetry {
-    pub fn record(&mut self, event: TelemetryEvent) {
+    pub fn record(&mut self, event: VehicleEvent) {
         self.events.push(event);
     }
 
-    pub fn events(&self) -> &[TelemetryEvent] {
+    pub fn events(&self) -> &[VehicleEvent] {
         &self.events
     }
 }
