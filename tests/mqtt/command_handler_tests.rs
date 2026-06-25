@@ -2,9 +2,12 @@ use std::time::Duration;
 
 use ford_infotainment::{
     command::{Command, CommandType},
+    event::CommandStatus,
     mqtt::{
         command_handler::MqttCommandPublishHandler, handler::MqttPublishHandler, topics::MqttTopics,
     },
+    policy::VehicleState,
+    service_bus::VehicleCommandBus,
 };
 use rumqttc::{Publish, QoS};
 
@@ -67,4 +70,34 @@ fn command_publish_handler_records_decode_error_for_invalid_command_payload() {
     assert_eq!(handler.messages().len(), 1);
     assert!(handler.commands().is_empty());
     assert_eq!(handler.decode_errors().len(), 1);
+}
+
+#[tokio::test]
+async fn command_publish_handler_submits_decoded_command_to_service_bus() {
+    let command = Command::new(
+        "cmd-handler-bus-001",
+        "VIN-001",
+        CommandType::LockDoors,
+        Duration::from_secs(30),
+    );
+
+    let topic = MqttTopics::command_topic("VIN-001");
+    let payload = serde_json::to_string(&command).expect("command should serialize");
+
+    let publish = Publish::new(topic, QoS::AtLeastOnce, payload);
+
+    let mut handler = MqttCommandPublishHandler::new();
+    let mut bus = VehicleCommandBus::new(16, VehicleState::default());
+
+    handler.handle_with_bus(publish, &mut bus).await;
+
+    assert_eq!(handler.commands().len(), 1);
+    assert_eq!(handler.acknowledgements().len(), 1);
+    assert!(handler.decode_errors().is_empty());
+
+    let ack = &handler.acknowledgements()[0];
+
+    assert_eq!(ack.command_id, "cmd-handler-bus-001");
+    assert_eq!(ack.vehicle_id, "VIN-001");
+    assert_eq!(ack.status, CommandStatus::Executed);
 }
