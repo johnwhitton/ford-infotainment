@@ -11,10 +11,9 @@ routes allowed commands through an in-process transport, executes them through
 a mock vehicle service, returns command acknowledgements, and records domain
 events in shared in-memory telemetry.
 
-The implementation runs locally without Docker, MQTT, a broker, or any network
-server. MQTT remains a Phase 2 transport adapter option around the same
-architecture, not a Phase 1 dependency and not a replacement for the service
-bus.
+The implementation runs locally without Docker, broker communication, or any
+network server. MQTT remains a Phase 2 transport adapter option around the
+same architecture, not a replacement for the service bus.
 
 ## Canonical Phase 1 Architecture
 
@@ -61,7 +60,7 @@ The implemented architecture includes:
 - Rust 2024 edition.
 - Library-first architecture.
 - No Docker requirement.
-- No MQTT dependency.
+- No broker communication or broker requirement.
 - No network server or broker.
 - Typed command model.
 - Command validation.
@@ -104,10 +103,15 @@ The implemented architecture includes:
 | `src/command.rs` | `CommandType`, `Command`, command construction, expiry helper, and command validation. |
 | `src/error.rs` | `CommandError` variants for validation, policy, bus send, service, and acknowledgement failures. |
 | `src/event.rs` | `CommandAcknowledgement` and `CommandStatus` types used to report command outcomes. |
+| `src/command_transport.rs` | `CommandTransport` abstraction for command submission boundaries. |
 | `src/policy.rs` | `VehicleState` and `PolicyEngine`; tracks duplicate command IDs and blocks unsafe unlock while moving. |
 | `src/service_bus.rs` | `VehicleCommandBus`, `MockVehicleService`, background worker orchestration, acknowledgement handling, and telemetry recording. |
 | `src/telemetry.rs` | `VehicleEvent`, `VehicleEventKind`, and shared `InMemoryTelemetry` backed by `Arc<Mutex<Vec<VehicleEvent>>>`. |
 | `src/transport.rs` | `BusMessage` and `InProcessTransport` using bounded Tokio MPSC plus oneshot acknowledgement channels. |
+| `src/mqtt/mod.rs` | MQTT module entry point exporting topic, adapter, and client helpers. |
+| `src/mqtt/topics.rs` | MQTT topic naming helpers for command, acknowledgement, and telemetry topics. |
+| `src/mqtt/adapter.rs` | JSON encoding and decoding between MQTT-shaped payloads and existing domain models. |
+| `src/mqtt/client.rs` | `MqttClient` construction and broker connection lifecycle wrapper around `rumqttc`; currently performs no broker communication. |
 
 ## Library-First Architecture
 
@@ -322,17 +326,22 @@ MQTT can be added without changing the core command flow. MQTT represents an
 external transport around the existing architecture. Tokio MPSC remains the
 internal transport used for in-application routing.
 
-Phase 2 should introduce a transport abstraction before connecting MQTT to the
+Phase 2 introduced a transport abstraction before connecting MQTT to the
 service bus. This abstraction is justified because Phase 2 now has two
-transport implementations:
+transport-facing components:
 
 - `InProcessTransport`.
+- `MqttClient`.
+
+Future Slice 2 work can add:
+
 - `MqttTransport`.
 
 This is an intentional application of the Open/Closed Principle: the system can
 add a new transport implementation without moving business logic out of the
 existing command, validation, policy, worker, acknowledgement, event, or
-telemetry path. `VehicleCommandBus` should remain transport-independent.
+telemetry path. `VehicleCommandBus` remains unchanged and should remain
+transport-independent.
 
 MQTT must not replace:
 
@@ -351,25 +360,23 @@ acknowledgements back to MQTT.
 
 ```mermaid
 flowchart TD
-    Broker["External MQTT broker"]
-    MqttTransport["MqttTransport"]
-    MessageTransport["MessageTransport"]
-    Bus["VehicleCommandBus"]
-    Validation["Validation"]
-    Policy["PolicyEngine"]
-    InternalTransport["InProcessTransport<br/>Tokio MPSC"]
-    Worker["Background worker"]
-    Vehicle["MockVehicleService"]
+    Command["Command"]
+    Json["JSON<br/>serde"]
+    Adapter["MqttAdapter"]
+    Client["MqttClient"]
+    Rumqttc["rumqttc"]
+    Broker["External broker<br/>future"]
 
-    Broker --> MqttTransport
-    MqttTransport --> MessageTransport
-    MessageTransport --> Bus
-    Bus --> Validation
-    Validation --> Policy
-    Policy --> InternalTransport
-    InternalTransport --> Worker
-    Worker --> Vehicle
+    Command --> Json
+    Json --> Adapter
+    Adapter --> Client
+    Client --> Rumqttc
+    Rumqttc -. future .-> Broker
 ```
+
+The broker remains outside the implemented code path. The current
+implementation creates the MQTT client wrapper but does not subscribe, publish,
+or perform broker communication.
 
 Broker decision:
 
@@ -450,9 +457,8 @@ business logic moves into the adapter. Validation, policy, internal routing,
 worker execution, acknowledgements, events, and telemetry remain owned by the
 Phase 1 core.
 
-`MqttTransport` is reserved for Slice 2A, when `rumqttc` is introduced and the
-code performs actual broker communication through the `MessageTransport`
-abstraction.
+`MqttTransport` remains future work. Slice 2A.2 introduced `MqttClient` and
+`rumqttc`, but broker communication is still disabled.
 
 ```mermaid
 flowchart TD
@@ -570,6 +576,27 @@ model.
 - JSON with `serde` and `serde_json` is current.
 - Protobuf with `prost` is future work.
 
+## Architecture Notes
+
+Transport:
+
+- Current: `InProcessTransport`.
+- Current: `MqttClient`.
+- Future: `MqttTransport`.
+
+Codec:
+
+- Current: JSON.
+- Future: Protobuf.
+
+Service layer unchanged:
+
+- `VehicleCommandBus`.
+- validation.
+- `PolicyEngine`.
+- background worker.
+- telemetry.
+
 ## Phase 1 Summary
 
 Phase 1 implements a local-first Rust 2024 command/event service bus with a
@@ -583,8 +610,8 @@ and passing tests.
 - No Ford internal architecture model.
 - No real vehicle, ECU, TCU, cloud, AAOS, CarPlay, Android Auto, or
   SmartDeviceLink integration.
-- No MQTT client, MQTT broker, broker hardening, clustering, TLS,
-  authentication, or authorization in Phase 1.
+- No MQTT broker, broker communication, broker hardening, clustering, TLS,
+  authentication, or authorization.
 - No real D-Bus, gRPC, Protobuf, CAN, or Automotive Ethernet.
 - No persistent database.
 - No production authentication.
