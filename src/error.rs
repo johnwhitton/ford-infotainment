@@ -13,4 +13,7 @@ pub enum CommandError {
 
     #[error("unsafe vehicle state: {0}")]
     UnsafeState(String),
+
+    #[error("duplicate command_id")]
+    Duplicate,
 }
