@@ -10,4 +10,7 @@ pub enum CommandError {
 
     #[error("command deadline has expired")]
     Expired,
+
+    #[error("unsafe vehicle state: {0}")]
+    UnsafeState(String),
 }
