@@ -1,5 +1,10 @@
-use ford_infotainment::mqtt::{
-    command_handler::MqttCommandPublishHandler, handler::MqttPublishHandler, topics::MqttTopics,
+use std::time::Duration;
+
+use ford_infotainment::{
+    command::{Command, CommandType},
+    mqtt::{
+        command_handler::MqttCommandPublishHandler, handler::MqttPublishHandler, topics::MqttTopics,
+    },
 };
 use rumqttc::{Publish, QoS};
 
@@ -19,4 +24,47 @@ fn command_publish_handler_records_command_message() {
     assert_eq!(messages.len(), 1);
     assert_eq!(messages[0].topic, topic);
     assert_eq!(messages[0].payload, payload);
+}
+
+#[test]
+fn command_publish_handler_decodes_valid_command() {
+    let command = Command::new(
+        "cmd-handler-decode-001",
+        "VIN-001",
+        CommandType::LockDoors,
+        Duration::from_secs(30),
+    );
+
+    let topic = MqttTopics::command_topic("VIN-001");
+    let payload = serde_json::to_string(&command).expect("command should serialize");
+
+    let publish = Publish::new(topic, QoS::AtLeastOnce, payload);
+
+    let mut handler = MqttCommandPublishHandler::new();
+
+    handler.handle(publish);
+
+    let commands = handler.commands();
+
+    assert_eq!(commands.len(), 1);
+    assert_eq!(commands[0].command_id, "cmd-handler-decode-001");
+    assert_eq!(commands[0].vehicle_id, "VIN-001");
+    assert_eq!(commands[0].command_type, CommandType::LockDoors);
+    assert!(handler.decode_errors().is_empty());
+}
+
+#[test]
+fn command_publish_handler_records_decode_error_for_invalid_command_payload() {
+    let topic = MqttTopics::command_topic("VIN-001");
+    let payload = r#"{"not":"a valid command"}"#;
+
+    let publish = Publish::new(topic, QoS::AtLeastOnce, payload);
+
+    let mut handler = MqttCommandPublishHandler::new();
+
+    handler.handle(publish);
+
+    assert_eq!(handler.messages().len(), 1);
+    assert!(handler.commands().is_empty());
+    assert_eq!(handler.decode_errors().len(), 1);
 }
