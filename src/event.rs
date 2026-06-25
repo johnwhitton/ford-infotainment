@@ -2,8 +2,9 @@ use crate::{
     command::{Command, CommandType},
     error::CommandError,
 };
+use serde::{Deserialize, Serialize};
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub enum CommandStatus {
     Accepted,
     Rejected,
@@ -12,7 +13,7 @@ pub enum CommandStatus {
     Failed,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct CommandAcknowledgement {
     pub command_id: String,
     pub vehicle_id: String,

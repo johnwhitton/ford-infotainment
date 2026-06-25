@@ -1,14 +1,15 @@
 use crate::error::CommandError;
+use serde::{Deserialize, Serialize};
 use std::time::{Duration, SystemTime};
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub enum CommandType {
     LockDoors,
     UnlockDoors,
     RequestVehicleHealth,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Command {
     pub command_id: String,
     pub vehicle_id: String,
