@@ -1,3 +1,4 @@
+use crate::error::CommandError;
 use std::time::{Duration, SystemTime};
 
 #[derive(Debug, Clone, PartialEq)]
@@ -31,6 +32,38 @@ impl Command {
             command_type,
             issued_at,
             deadline: issued_at + ttl,
+        }
+    }
+
+    pub fn validate(&self) -> Result<(), CommandError> {
+        if self.command_id.trim().is_empty() {
+            return Err(CommandError::MissingCommandId);
+        }
+
+        if self.vehicle_id.trim().is_empty() {
+            return Err(CommandError::MissingVehicleId);
+        }
+
+        if self.deadline <= SystemTime::now() {
+            return Err(CommandError::Expired);
+        }
+
+        Ok(())
+    }
+
+    pub fn expired(
+        command_id: impl Into<String>,
+        vehicle_id: impl Into<String>,
+        command_type: CommandType,
+    ) -> Self {
+        let issued_at = SystemTime::now() - Duration::from_secs(60);
+
+        Self {
+            command_id: command_id.into(),
+            vehicle_id: vehicle_id.into(),
+            command_type,
+            issued_at,
+            deadline: SystemTime::now() - Duration::from_secs(1),
         }
     }
 }
