@@ -349,18 +349,178 @@ mosquitto -v
 
 ---
 
+# Running the Live MQTT Demo
+
+The repository includes a complete end-to-end MQTT demonstration that connects a live MQTT broker to the existing Rust service bus.
+
+The demo performs the following steps:
+
+1. Connects to a local Mosquitto broker.
+2. Subscribes to the vehicle command topic.
+3. Receives a live MQTT publish.
+4. Decodes the JSON payload into the existing `Command` model.
+5. Submits the command to the existing `VehicleCommandBus`.
+6. Executes validation, policy checks, routing, and the mock vehicle service.
+7. Creates a `CommandAcknowledgement`.
+8. Encodes the acknowledgement as an MQTT message.
+9. Publishes the acknowledgement back to the broker.
+
+The business logic is unchanged from the broker-free implementation. MQTT simply becomes another transport boundary around the existing service bus.
+
+## Demo Architecture
+
+```text
+mosquitto_pub
+        │
+        ▼
++--------------------+
+| Mosquitto Broker   |
++--------------------+
+        │
+        ▼
+MqttClient
+        │
+        ▼
+MqttRuntime
+        │
+        ▼
+MqttPublishHandler
+        │
+        ▼
+MqttCommandPublishHandler
+        │
+        ▼
+MqttSubscriber
+        │
+        ▼
+Command
+        │
+        ▼
+VehicleCommandBus
+        │
+        ▼
+CommandAcknowledgement
+        │
+        ▼
+MqttAcknowledgementPublisher
+        │
+        ▼
+MqttClient
+        │
+        ▼
++--------------------+
+| Mosquitto Broker   |
++--------------------+
+        │
+        ▼
+mosquitto_sub
+```
+
+## Terminal 1 — Start the Broker
+
+```bash
+mosquitto
+```
+
+Leave the broker running.
+
+---
+
+## Terminal 2 — Listen for Acknowledgements
+
+```bash
+mosquitto_sub \
+    -h localhost \
+    -p 1883 \
+    -t 'vehicle/VIN-001/command_ack'
+```
+
+---
+
+## Terminal 3 — Start the Rust Demo
+
+```bash
+cargo run --example mqtt_demo
+```
+
+Expected output:
+
+```text
+Ford Infotainment MQTT demo
+Broker: localhost:1883
+Listening for commands on: vehicle/VIN-001/commands
+Publishing acknowledgements to: vehicle/VIN-001/command_ack
+
+Waiting for one MQTT command...
+```
+
+---
+
+## Terminal 4 — Publish a Command
+
+```bash
+mosquitto_pub \
+    -h localhost \
+    -p 1883 \
+    -t 'vehicle/VIN-001/commands' \
+    -m '{
+      "command_id": "cmd-mqtt-demo-001",
+      "vehicle_id": "VIN-001",
+      "command_type": "LockDoors",
+      "issued_at": {
+        "secs_since_epoch": 0,
+        "nanos_since_epoch": 0
+      },
+      "deadline": {
+        "secs_since_epoch": 9999999999,
+        "nanos_since_epoch": 0
+      }
+    }'
+```
+
+---
+
+## Expected Rust Output
+
+```text
+Received MQTT publish
+Topic: vehicle/VIN-001/commands
+
+Decoded command:
+Command { ... }
+
+Service bus acknowledgement:
+CommandAcknowledgement { ... }
+
+Published acknowledgement:
+Topic: vehicle/VIN-001/command_ack
+Payload:
+{
+    ...
+}
+```
+
+---
+
+## Expected Subscriber Output
+
+```text
+{"command_id":"cmd-mqtt-demo-001","vehicle_id":"VIN-001","command_type":"LockDoors","status":"Executed","reason":null}
+```
+
+This demonstrates the complete end-to-end flow from a live MQTT broker, through the existing Rust service bus, and back to the broker using an MQTT acknowledgement message.
+
 # Future Work
 
-Future implementation slices will add:
+Future enhancements include:
 
-- Live `MqttTransport` communication.
-- Broker-backed integration tests.
-- End-to-end command flow over MQTT.
-- Optional CLI commands for MQTT testing.
-- Production configuration (authentication, TLS, QoS tuning).
-- Deployment guidance for containerized brokers.
-
-The default developer experience will remain broker-free so that `cargo test` and `cargo run` continue to work without additional infrastructure.
+- Continuous MQTT runtime loop (current demo processes a single command).
+- Multi-vehicle subscriptions.
+- Configurable broker settings.
+- Broker-backed integration test suite.
+- CLI commands for MQTT interaction.
+- Production features such as authentication, TLS, retained messages, and QoS tuning.
+- Distributed deployment and containerized broker configuration.
 
 ## Appendices
 
