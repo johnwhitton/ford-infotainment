@@ -302,12 +302,49 @@ acknowledgement, and telemetry logic used by the local prototype.
 Phase 2 may add:
 
 ```text
+MqttMessageAdapter
 MqttTransport
 MqttCommandSubscriber
 MqttAcknowledgementPublisher
 Optional broker-backed integration tests
 Optional local broker run instructions
 ```
+
+`MqttMessageAdapter` is the Slice 1 broker-free placeholder boundary.
+`MqttTransport` is reserved for Slice 2, when `rumqttc` is introduced and the
+code performs actual broker communication.
+
+## Phase 2 Implementation Sequence
+
+### Slice 1 - Serialization And Adapter Interfaces
+
+Slice 1 prepares the MQTT adapter boundary without connecting to a broker and
+without changing the completed Phase 1 service bus.
+
+Slice 1 contains only:
+
+1. Add `serde`.
+2. Serialize `Command`.
+3. Serialize acknowledgements.
+4. Create MQTT topic helpers.
+5. Create `MqttMessageAdapter`.
+6. Create placeholder subscriber.
+7. Create placeholder acknowledgement publisher.
+
+Slice 1 must not:
+
+- connect to a broker.
+- introduce `rumqttc`.
+- name broker-free placeholder code `MqttTransport`.
+- modify `VehicleCommandBus`.
+- move validation, policy, routing, worker execution, acknowledgements, events,
+  or telemetry into MQTT code.
+- add broker configuration.
+
+The new `MqttMessageAdapter` types should adapt external payloads into
+existing `Command` values and use existing `CommandAcknowledgement` values for
+outbound acknowledgements. Topic names should be produced by helper functions
+rather than duplicated as hard-coded strings.
 
 Recommended Phase 2 architecture:
 

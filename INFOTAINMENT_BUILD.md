@@ -326,8 +326,9 @@ Completed tasks:
 - [x] Defined local-first execution so the core demo and tests run without
       Docker and without a broker.
 - [x] Selected an in-process Tokio service bus for the first implementation.
-- [x] Added a transport abstraction with `InProcessTransport` first and
-      `MqttTransport` as a future option.
+- [x] Added a transport abstraction with `InProcessTransport` first,
+      `MqttMessageAdapter` for broker-free Slice 1 adapter work, and
+      `MqttTransport` reserved for Slice 2 broker communication.
 - [x] Defined Recommended Phase 2 as an MQTT adapter around the existing
       service bus, not as the core domain model or a first-step dependency.
 - [x] Selected `rumqttc` as the preferred future Rust MQTT client.
@@ -597,14 +598,120 @@ documentation structure:
       review.
 - [x] The content avoids claiming internal Ford architecture knowledge.
 
+## Phase 2 Plan
+
+Phase 2 extends the completed Phase 1 architecture. MQTT is an external
+integration boundary and must not replace `VehicleCommandBus`, validation,
+`PolicyEngine`, `InProcessTransport`, the background worker,
+`CommandAcknowledgement`, `VehicleEvent`, or `InMemoryTelemetry`.
+
+Each Phase 2 slice should remain independently testable and end with a working
+commit.
+
+### Slice 1 - Serialization And Adapter Interfaces
+
+Objective: prepare the MQTT adapter boundary without connecting to a broker.
+
+Planned work:
+
+- [ ] Add `serde`.
+- [ ] Serialize `Command`.
+- [ ] Serialize `CommandAcknowledgement`.
+- [ ] Create MQTT topic helpers for `vehicle/{vin}/commands`,
+      `vehicle/{vin}/command_ack`, and `vehicle/{vin}/telemetry`.
+- [ ] Create `MqttMessageAdapter`.
+- [ ] Create a placeholder subscriber.
+- [ ] Create a placeholder acknowledgement publisher.
+- [ ] Keep `VehicleCommandBus` unchanged.
+- [ ] Do not introduce `rumqttc` yet.
+- [ ] Do not name broker-free placeholder code `MqttTransport`.
+- [ ] Do not add broker configuration.
+
+Acceptance checks:
+
+- [ ] Existing Phase 1 tests still pass.
+- [ ] Serialization tests cover commands and acknowledgements.
+- [ ] Topic helper tests cover command, acknowledgement, and telemetry topics.
+- [ ] `MqttMessageAdapter` placeholders compile without broker connectivity.
+
+### Slice 2 - MQTT Client Integration
+
+Objective: connect the adapter to an external local MQTT broker.
+
+Planned work:
+
+- [ ] Add `rumqttc`.
+- [ ] Introduce `MqttTransport` for actual broker communication.
+- [ ] Use an external local broker such as Mosquitto or EMQX.
+- [ ] Subscribe to `vehicle/{vin}/commands`.
+- [ ] Publish acknowledgements to `vehicle/{vin}/command_ack`.
+- [ ] Keep validation, policy, in-process routing, worker execution,
+      acknowledgements, events, and telemetry in the Phase 1 core.
+
+Acceptance checks:
+
+- [ ] Broker-free Phase 1 tests still pass by default.
+- [ ] MQTT client behavior can be exercised separately from the default test
+      path.
+
+### Slice 3 - Broker-Backed Integration Tests
+
+Objective: add opt-in tests that verify MQTT command intake and acknowledgement
+publication through a real local broker.
+
+Planned work:
+
+- [ ] Add broker-backed integration tests behind an explicit opt-in path.
+- [ ] Verify command payloads from `vehicle/{vin}/commands` reach
+      `VehicleCommandBus`.
+- [ ] Verify acknowledgements are published to `vehicle/{vin}/command_ack`.
+- [ ] Keep default `cargo test` broker-free.
+
+Acceptance checks:
+
+- [ ] Default tests require no broker.
+- [ ] Opt-in broker tests document their broker prerequisite.
+
+### Slice 4 - `clap` CLI
+
+Objective: evolve the thin demo executable into a CLI wrapper around the
+library.
+
+Planned work:
+
+- [ ] Add `clap`.
+- [ ] Support local demo command submission.
+- [ ] Support optional MQTT adapter exercise commands.
+- [ ] Keep business logic out of `src/main.rs`.
+
+Acceptance checks:
+
+- [ ] CLI commands call library APIs.
+- [ ] Existing tests still pass.
+- [ ] `cargo run` remains useful for a local demo.
+
+### Slice 5 - Cleanup And Documentation
+
+Objective: tighten code boundaries and update documentation after Phase 2
+implementation slices.
+
+Planned work:
+
+- [ ] Remove stale placeholder language.
+- [ ] Document broker setup for optional MQTT integration.
+- [ ] Re-check module responsibilities.
+- [ ] Re-run formatting, build, tests, demo, and diff checks.
+
+Acceptance checks:
+
+- [ ] Documentation reflects the implemented Phase 2 state.
+- [ ] Phase 1 local-first behavior remains documented and working.
+- [ ] The final Phase 2 diff is ready for review and commit.
+
 ## Remaining Work Summary
 
-- [ ] Phase 2 can add a `clap` CLI wrapper around the library.
-- [ ] Recommended Phase 2: MQTT adapter around the existing service bus.
-- [ ] Phase 2 MQTT should use `rumqttc` with an external local broker such as
-      Mosquitto or EMQX.
-- [ ] Phase 2 should not build a Rust MQTT broker/server; `mqtt-endpoint-tokio`
-      remains future research only if server-side MQTT behavior becomes an
-      explicit goal.
-- [ ] Broker-backed MQTT tests, if added, should remain opt-in and must not
-      replace local Phase 1 tests.
+- [ ] Complete Phase 2 Slice 1 - serialization and adapter interfaces.
+- [ ] Complete Phase 2 Slice 2 - MQTT client integration.
+- [ ] Complete Phase 2 Slice 3 - broker-backed integration tests.
+- [ ] Complete Phase 2 Slice 4 - `clap` CLI.
+- [ ] Complete Phase 2 Slice 5 - cleanup and documentation.

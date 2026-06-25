@@ -377,6 +377,85 @@ Broker decision:
 - Broker-backed tests should be opt-in. Phase 1 tests must continue to pass
   without a broker.
 
+## Phase 2 Slice 1
+
+Slice 1 introduces the first MQTT-facing implementation boundary while keeping
+the completed Phase 1 architecture as the system core. MQTT is an external
+integration boundary. It must not replace `VehicleCommandBus`, command
+validation, `PolicyEngine`, `InProcessTransport`, the background worker,
+`CommandAcknowledgement`, `VehicleEvent`, or `InMemoryTelemetry`.
+
+Slice 1 introduces three concepts.
+
+### JSON Serialization
+
+Commands and acknowledgements become serializable using `serde`. This allows
+the existing typed `Command` and `CommandAcknowledgement` models to cross a
+process boundary without changing the internal command path.
+
+Serialization should be added to the domain types that need to cross the MQTT
+boundary. It should not change validation, policy, service bus routing, worker
+execution, acknowledgement status semantics, or telemetry recording.
+
+### MQTT Topic Model
+
+Slice 1 introduces the MQTT topic taxonomy:
+
+```text
+vehicle/{vin}/commands
+vehicle/{vin}/command_ack
+vehicle/{vin}/telemetry
+```
+
+These topics should initially be represented by helper functions rather than
+hard-coded strings. Topic helpers keep VIN interpolation and topic naming
+consistent across subscribers, publishers, tests, and future CLI code.
+
+### MQTT Adapter Boundary
+
+Slice 1 adds an adapter layer around the existing service bus:
+
+```text
+External MQTT Broker
+        |
+        v
+MqttMessageAdapter
+        |
+VehicleCommandBus
+```
+
+`MqttMessageAdapter` converts MQTT-shaped payloads into existing `Command`
+objects and passes them to `VehicleCommandBus`. No business logic should move
+into the adapter. Validation, policy, internal routing, worker execution,
+acknowledgements, events, and telemetry remain owned by the Phase 1 core.
+
+`MqttTransport` is reserved for Slice 2, when `rumqttc` is introduced and the
+code performs actual broker communication.
+
+```mermaid
+flowchart TD
+    Broker["MQTT Broker"]
+    Subscriber["MqttMessageAdapter"]
+    Bus["VehicleCommandBus"]
+    Validation["Validation"]
+    Policy["PolicyEngine"]
+    Queue["InProcessTransport"]
+    Worker["Background Worker"]
+    Vehicle["MockVehicleService"]
+    Ack["CommandAcknowledgement"]
+    Publisher["MQTT Publisher"]
+
+    Broker --> Subscriber
+    Subscriber --> Bus
+    Bus --> Validation
+    Validation --> Policy
+    Policy --> Queue
+    Queue --> Worker
+    Worker --> Vehicle
+    Vehicle --> Ack
+    Ack --> Publisher
+```
+
 ## CLI Evolution
 
 Phase 2 can evolve the thin demonstration executable into a `clap` CLI for:
