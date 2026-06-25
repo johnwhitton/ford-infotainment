@@ -21,10 +21,26 @@ path toward external vehicle messaging.
 Read next:
 
 - [Coding Prototype](docs/coding/README.md) for the implemented Rust service
-  bus and broker-free MQTT-shaped command flow.
+  bus, MQTT runtime, and live broker demonstration.
 - [Design](docs/coding/DESIGN.md) for architectural decisions.
 - [Implementation](docs/coding/IMPLEMENTATION.md) for completed slices and
   remaining work.
+- [MQTT Runbook](docs/coding/MQTT_RUNBOOK.md) for the canonical Mosquitto demo
+  flow.
+
+## Quick Start
+
+Open four terminals from the repository root:
+
+```text
+mosquitto
+mosquitto_sub -h localhost -p 1883 -t 'vehicle/VIN-001/command_ack'
+cargo run --example mqtt_demo
+mosquitto_pub -h localhost -p 1883 -t 'vehicle/VIN-001/commands' -m '{"command_id":"cmd-mqtt-demo-001","vehicle_id":"VIN-001","command_type":"LockDoors","issued_at":{"secs_since_epoch":0,"nanos_since_epoch":0},"deadline":{"secs_since_epoch":9999999999,"nanos_since_epoch":0}}'
+```
+
+This is the fastest way to see the live MQTT demonstration. The detailed setup
+and troubleshooting guide is [docs/coding/MQTT_RUNBOOK.md](docs/coding/MQTT_RUNBOOK.md).
 
 ## Candidate - John Whitton
 
@@ -63,8 +79,8 @@ software, test, and platform stakeholders.
   Salus runtime responsibilities and the systems patterns that transfer to
   infotainment service design.
 - [Coding Prototype](docs/coding/README.md): the Rust command/event service-bus
-  prototype covering the completed local service bus, broker-free MQTT-shaped
-  command flow, validation, policy, telemetry, errors, and tests.
+  prototype covering the completed local service bus, MQTT runtime and demo,
+  validation, policy, telemetry, errors, and tests.
 - [Methodologies](docs/methodologies/README.md): engineering standards for
   SOLID design, TDD, API versioning, documentation, code review, pair
   programming, Agile delivery, and maintainable Rust services.
@@ -104,6 +120,11 @@ The prototype is library-first: `src/lib.rs` exports reusable business logic
 and `src/main.rs` is a thin demonstration executable. It runs with `cargo test`
 and `cargo run` without Docker, a broker, or any network service.
 
+The repository also includes a working MQTT demonstration in
+`examples/mqtt_demo.rs`. That path uses a local Mosquitto broker to receive a
+command, decode it, submit it into `VehicleCommandBus`, encode the
+acknowledgement, and publish the acknowledgement back to MQTT.
+
 ### Current Status
 
 Implemented:
@@ -113,14 +134,36 @@ Implemented:
 - Phase 2 Slice 2A.1 complete.
 - Phase 2 Slice 2A.2 complete.
 - Phase 2 Slice 2B complete.
+- MQTT runtime and publish handler complete.
+- MQTT command publish handler complete.
+- Broker smoke tests and runtime tests present as ignored, opt-in tests.
+- Live Mosquitto demo executable complete.
 
-Planned:
+Production enhancements remain planned:
 
-- MQTT transport with live broker communication.
-- Broker-backed integration tests.
-- CLI.
-- Cleanup.
+- Continuous MQTT runtime loop.
+- Configuration.
+- TLS and authentication.
+- QoS tuning.
+- Multi-vehicle support.
+- Production deployment.
+- Observability.
+- CLI improvements.
 - Future codec extensions, including Protobuf.
+
+## Running the MQTT Demo
+
+The short version:
+
+```text
+Start Mosquitto
+cargo run --example mqtt_demo
+Publish a command using mosquitto_pub
+Observe acknowledgements using mosquitto_sub
+```
+
+Use [docs/coding/MQTT_RUNBOOK.md](docs/coding/MQTT_RUNBOOK.md) for the exact
+commands, expected output, and broker troubleshooting notes.
 
 ### Key Design Decisions
 
@@ -130,20 +173,16 @@ Planned:
 - Policy before transport.
 - Transport separated from business logic.
 - Broker-free local development.
+- Optional broker-backed MQTT demonstration.
 - JSON today, Protobuf later.
 - Transport independent from codec.
 
 ### Future Roadmap
 
-#### MQTT Transport
+#### MQTT Production Runtime
 
-Connect the existing broker-free architecture to a real MQTT broker without
-changing the service bus.
-
-#### Broker Integration
-
-Verify end-to-end messaging against a local broker while keeping the default
-test path broker-free.
+Extend the current single-command MQTT demo into a continuous, configurable
+runtime without changing the service bus.
 
 #### CLI
 
@@ -174,11 +213,15 @@ src/mqtt/client.rs
 src/mqtt/subscriber.rs
 src/mqtt/publisher.rs
 src/mqtt/command_flow.rs
+src/mqtt/handler.rs
+src/mqtt/command_handler.rs
+src/mqtt/runtime.rs
 src/mqtt/transport.rs
 src/policy.rs
 src/service_bus.rs
 src/telemetry.rs
 src/transport.rs
+examples/mqtt_demo.rs
 ```
 
 The prototype is intentionally scoped as an interview-friendly local
@@ -203,7 +246,7 @@ Local Rust service bus
 
 Phase 2
 -------
-MQTT transport adapter
+MQTT adapter and live broker demo
 
 ↓
 

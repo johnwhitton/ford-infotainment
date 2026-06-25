@@ -9,7 +9,7 @@ The prototype intentionally evolved in small, reviewable implementation slices:
 - **Phase 1** implemented an in-process command/event service bus using Tokio MPSC.
 - **Phase 2** introduced MQTT-facing components while keeping the existing `VehicleCommandBus` unchanged.
 - The current implementation remains **broker-free by default**. All unit and integration tests can be run without installing or starting an MQTT broker.
-- Future implementation slices introduce an **optional local MQTT broker** for end-to-end integration testing using the existing service bus.
+- The live demo and ignored broker smoke tests use an **optional local MQTT broker** for end-to-end MQTT exercise using the existing service bus.
 
 The recommended broker is **Eclipse Mosquitto**.
 
@@ -26,7 +26,7 @@ This runbook explains how to:
 - Verify that the broker is running correctly.
 - Publish and subscribe to MQTT topics.
 - Exercise the prototype using a real broker.
-- Prepare for future broker-backed integration tests.
+- Run the live demo and opt-in broker smoke tests.
 
 ---
 
