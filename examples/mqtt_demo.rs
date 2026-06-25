@@ -102,6 +102,12 @@ fn main() {
         .publish(&ack_message.topic, &ack_message.payload)
         .expect("should publish acknowledgement message");
 
+    // Drive the rumqttc connection briefly so the queued publish is flushed
+    // to the broker before the demo exits.
+    let _ = mqtt_runtime
+        .client_mut()
+        .recv_publish(Duration::from_millis(500));
+
     println!("Published acknowledgement:");
     println!("Topic: {}", ack_message.topic);
     println!("Payload: {}", ack_message.payload);
