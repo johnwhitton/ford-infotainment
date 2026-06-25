@@ -4,6 +4,21 @@ This document describes the implemented Phase 1 Rust prototype. The prototype
 is a small, reviewable service-bus example rather than a production vehicle
 platform.
 
+## Reviewer Guide
+
+This document describes the architecture: command flow, validation, policy,
+transport boundaries, telemetry, broker-free MQTT-shaped command flow, and
+future transport/codec extension points.
+
+It is relevant because it shows the design decisions behind the prototype and
+why Phase 2 extends the Phase 1 service bus instead of replacing it.
+
+Read next:
+
+- [Coding README](README.md) for the prototype overview and status.
+- [Implementation](IMPLEMENTATION.md) for completed slices and test coverage.
+- [Build Plan](../../INFOTAINMENT_BUILD.md) for the repository timeline.
+
 ## Prototype Overview
 
 The service accepts typed vehicle commands, validates them, checks policy,
@@ -108,10 +123,14 @@ The implemented architecture includes:
 | `src/service_bus.rs` | `VehicleCommandBus`, `MockVehicleService`, background worker orchestration, acknowledgement handling, and telemetry recording. |
 | `src/telemetry.rs` | `VehicleEvent`, `VehicleEventKind`, and shared `InMemoryTelemetry` backed by `Arc<Mutex<Vec<VehicleEvent>>>`. |
 | `src/transport.rs` | `BusMessage` and `InProcessTransport` using bounded Tokio MPSC plus oneshot acknowledgement channels. |
-| `src/mqtt/mod.rs` | MQTT module entry point exporting topic, adapter, and client helpers. |
+| `src/mqtt/mod.rs` | MQTT module entry point exporting topic, adapter, client, subscriber, publisher, command-flow, and transport helpers. |
 | `src/mqtt/topics.rs` | MQTT topic naming helpers for command, acknowledgement, and telemetry topics. |
 | `src/mqtt/adapter.rs` | JSON encoding and decoding between MQTT-shaped payloads and existing domain models. |
 | `src/mqtt/client.rs` | `MqttClient` construction and broker connection lifecycle wrapper around `rumqttc`; currently performs no broker communication. |
+| `src/mqtt/subscriber.rs` | Broker-free command message decoder that turns `MqttCommandMessage` values into existing `Command` values. |
+| `src/mqtt/publisher.rs` | Broker-free acknowledgement encoder that turns `CommandAcknowledgement` values into `MqttAcknowledgementMessage` values. |
+| `src/mqtt/command_flow.rs` | Broker-free MQTT-shaped command flow from inbound command message through `VehicleCommandBus` to outbound acknowledgement message. |
+| `src/mqtt/transport.rs` | MQTT transport wrapper around `MqttClient`; current coverage is broker-free construction, while live broker IO remains future work. |
 
 ## Library-First Architecture
 
@@ -327,21 +346,19 @@ external transport around the existing architecture. Tokio MPSC remains the
 internal transport used for in-application routing.
 
 Phase 2 introduced a transport abstraction before connecting MQTT to the
-service bus. This abstraction is justified because Phase 2 now has two
+service bus. This abstraction is justified because Phase 2 now has multiple
 transport-facing components:
 
 - `InProcessTransport`.
 - `MqttClient`.
-
-Future Slice 2 work can add:
-
 - `MqttTransport`.
 
 This is an intentional application of the Open/Closed Principle: the system can
 add a new transport implementation without moving business logic out of the
 existing command, validation, policy, worker, acknowledgement, event, or
-telemetry path. `VehicleCommandBus` remains unchanged and should remain
-transport-independent.
+telemetry path. Current `MqttTransport` coverage is broker-free construction;
+live broker communication remains future work. `VehicleCommandBus` remains
+unchanged and should remain transport-independent.
 
 MQTT must not replace:
 
@@ -363,20 +380,45 @@ flowchart TD
     Command["Command"]
     Json["JSON<br/>serde"]
     Adapter["MqttAdapter"]
+    Transport["MqttTransport<br/>broker-free wrapper"]
     Client["MqttClient"]
     Rumqttc["rumqttc"]
     Broker["External broker<br/>future"]
 
     Command --> Json
     Json --> Adapter
-    Adapter --> Client
+    Adapter --> Transport
+    Transport --> Client
     Client --> Rumqttc
     Rumqttc -. future .-> Broker
 ```
 
 The broker remains outside the implemented code path. The current
-implementation creates the MQTT client wrapper but does not subscribe, publish,
-or perform broker communication.
+implementation creates the MQTT client and transport wrappers but does not run
+a live subscription loop, publishing loop, or broker-backed integration path.
+
+The completed broker-free command flow is:
+
+```text
+MqttCommandMessage
+    ↓
+MqttSubscriber
+    ↓
+Command
+    ↓
+VehicleCommandBus
+    ↓
+CommandAcknowledgement
+    ↓
+MqttAcknowledgementPublisher
+    ↓
+MqttAcknowledgementMessage
+```
+
+This flow is MQTT-shaped, but it is not a live MQTT subscription loop. It uses
+the existing `VehicleCommandBus`, so validation, policy, worker execution,
+acknowledgements, `VehicleEvent`, and `InMemoryTelemetry` remain in the Phase 1
+core.
 
 Broker decision:
 
@@ -407,8 +449,8 @@ Implemented Slice 1 modules:
 Implemented Slice 1 tests:
 
 - `tests/serialization_tests.rs`.
-- `tests/mqtt_topics_tests.rs`.
-- `tests/mqtt_adapter_tests.rs`.
+- `tests/mqtt/topics_tests.rs`.
+- `tests/mqtt/adapter_tests.rs`.
 
 Slice 1 remains broker-free and does not introduce `rumqttc`.
 
@@ -457,8 +499,10 @@ business logic moves into the adapter. Validation, policy, internal routing,
 worker execution, acknowledgements, events, and telemetry remain owned by the
 Phase 1 core.
 
-`MqttTransport` remains future work. Slice 2A.2 introduced `MqttClient` and
-`rumqttc`, but broker communication is still disabled.
+`MqttTransport` now exists as a wrapper around `MqttClient`. Current coverage
+is broker-free construction only; live broker communication, subscription
+loops, publishing loops, and broker-backed integration tests remain future
+work.
 
 ```mermaid
 flowchart TD
@@ -483,6 +527,57 @@ flowchart TD
     Vehicle --> Ack
     Ack --> Publisher
 ```
+
+## Phase 2 Slice 2B
+
+Slice 2B broker-free command flow is complete. It connects MQTT-shaped command
+messages to the existing service bus without introducing a live broker,
+subscription loop, broker-backed integration tests, or `VehicleCommandBus`
+changes.
+
+Implemented Slice 2B modules:
+
+- `src/mqtt/subscriber.rs`.
+- `src/mqtt/publisher.rs`.
+- `src/mqtt/command_flow.rs`.
+
+Implemented Slice 2B tests:
+
+- `tests/mqtt/subscriber_tests.rs`.
+- `tests/mqtt/publisher_tests.rs`.
+- `tests/mqtt/command_flow_tests.rs`.
+
+Completed broker-free flow:
+
+```mermaid
+flowchart TD
+    Message["MqttCommandMessage"]
+    Subscriber["MqttSubscriber"]
+    Command["Command"]
+    Bus["VehicleCommandBus"]
+    Ack["CommandAcknowledgement"]
+    Publisher["MqttAcknowledgementPublisher"]
+    AckMessage["MqttAcknowledgementMessage"]
+
+    Message --> Subscriber
+    Subscriber --> Command
+    Command --> Bus
+    Bus --> Ack
+    Ack --> Publisher
+    Publisher --> AckMessage
+```
+
+Slice 2B preserves the Phase 1 core. Validation, policy, worker execution,
+acknowledgements, `VehicleEvent`, and `InMemoryTelemetry` still live behind
+`VehicleCommandBus`.
+
+Still not implemented:
+
+- live broker communication.
+- real MQTT subscription loop.
+- real MQTT publishing loop.
+- broker-backed integration tests.
+- changes to `VehicleCommandBus`.
 
 ## CLI Evolution
 
@@ -582,7 +677,8 @@ Transport:
 
 - Current: `InProcessTransport`.
 - Current: `MqttClient`.
-- Future: `MqttTransport`.
+- Current: broker-free `MqttTransport` wrapper construction.
+- Future: live broker communication through `MqttTransport`.
 
 Codec:
 

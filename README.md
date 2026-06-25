@@ -9,6 +9,23 @@ The material is written for reviewers evaluating system design clarity, Rust
 and API thinking, safety boundaries, observability, testing discipline, and the
 ability to explain complex platform work.
 
+## Reviewer Guide
+
+This README is the portfolio entry point. It explains what is in the repository
+and highlights the current Rust prototype status.
+
+It is relevant because it lets a Ford interviewer quickly evaluate design
+clarity, local implementation discipline, safety boundaries, and the evolution
+path toward external vehicle messaging.
+
+Read next:
+
+- [Coding Prototype](docs/coding/README.md) for the implemented Rust service
+  bus and broker-free MQTT-shaped command flow.
+- [Design](docs/coding/DESIGN.md) for architectural decisions.
+- [Implementation](docs/coding/IMPLEMENTATION.md) for completed slices and
+  remaining work.
+
 ## Candidate - John Whitton
 
 John Whitton is a Principal/Staff-level software engineer and engineering
@@ -45,9 +62,9 @@ software, test, and platform stakeholders.
 - [Salus Walkthrough](docs/walkthrough/README.md): a standalone explanation of
   Salus runtime responsibilities and the systems patterns that transfer to
   infotainment service design.
-- [Coding Prototype](docs/coding/README.md): the implemented Phase 1 Rust
-  command/event service-bus prototype covering commands, validation, policy
-  gates, transport, acknowledgements, telemetry, errors, and tests.
+- [Coding Prototype](docs/coding/README.md): the Rust command/event service-bus
+  prototype covering the completed local service bus, broker-free MQTT-shaped
+  command flow, validation, policy, telemetry, errors, and tests.
 - [Methodologies](docs/methodologies/README.md): engineering standards for
   SOLID design, TDD, API versioning, documentation, code review, pair
   programming, Agile delivery, and maintainable Rust services.
@@ -76,21 +93,70 @@ connected vehicle command/event paths.
 
 ## Coding Prototype Summary
 
-The Phase 1 coding prototype is implemented as a small, reviewable Rust 2024
-service-bus example. It accepts typed vehicle commands, validates them, checks
-policy, routes allowed commands through `InProcessTransport` over bounded Tokio
-MPSC, executes them with a `MockVehicleService`, returns
-`CommandAcknowledgement` values through oneshot channels, and records
-`VehicleEvent` values in shared `InMemoryTelemetry`.
+The coding prototype is a small, reviewable Rust 2024 service-bus example. It
+accepts typed vehicle commands, validates them, checks policy, routes allowed
+commands through `InProcessTransport` over bounded Tokio MPSC, executes them
+with a `MockVehicleService`, returns `CommandAcknowledgement` values through
+oneshot channels, and records `VehicleEvent` values in shared
+`InMemoryTelemetry`.
 
 The prototype is library-first: `src/lib.rs` exports reusable business logic
 and `src/main.rs` is a thin demonstration executable. It runs with `cargo test`
-and `cargo run` without Docker, MQTT, a broker, or any network service.
+and `cargo run` without Docker, a broker, or any network service.
 
-Recommended Phase 2: MQTT adapter around the existing service bus. MQTT should
-wrap the current architecture rather than replace validation, policy,
-`InProcessTransport`, acknowledgements, `VehicleEvent`, or
-`InMemoryTelemetry`.
+### Current Status
+
+Implemented:
+
+- Phase 1 complete.
+- Phase 2 Slice 1 complete.
+- Phase 2 Slice 2A.1 complete.
+- Phase 2 Slice 2A.2 complete.
+- Phase 2 Slice 2B complete.
+
+Planned:
+
+- MQTT transport with live broker communication.
+- Broker-backed integration tests.
+- CLI.
+- Cleanup.
+- Future codec extensions, including Protobuf.
+
+### Key Design Decisions
+
+- Library-first architecture.
+- Thin executable.
+- Validation before execution.
+- Policy before transport.
+- Transport separated from business logic.
+- Broker-free local development.
+- JSON today, Protobuf later.
+- Transport independent from codec.
+
+### Future Roadmap
+
+#### MQTT Transport
+
+Connect the existing broker-free architecture to a real MQTT broker without
+changing the service bus.
+
+#### Broker Integration
+
+Verify end-to-end messaging against a local broker while keeping the default
+test path broker-free.
+
+#### CLI
+
+Provide an interactive demonstration tool around the existing library APIs.
+
+#### Protobuf
+
+Introduce an alternative binary codec while preserving the current domain
+model.
+
+#### gRPC
+
+Add an alternative external transport around the same `VehicleCommandBus`.
 
 Current Rust modules:
 
@@ -98,8 +164,17 @@ Current Rust modules:
 src/lib.rs
 src/main.rs
 src/command.rs
+src/command_transport.rs
 src/error.rs
 src/event.rs
+src/mqtt/mod.rs
+src/mqtt/topics.rs
+src/mqtt/adapter.rs
+src/mqtt/client.rs
+src/mqtt/subscriber.rs
+src/mqtt/publisher.rs
+src/mqtt/command_flow.rs
+src/mqtt/transport.rs
 src/policy.rs
 src/service_bus.rs
 src/telemetry.rs
@@ -116,6 +191,38 @@ SOLID ownership boundaries, TDD for command and API behavior, clear versioned
 interfaces, documentation that preserves design intent, code review focused on
 contracts and safety, pair programming for high-risk integration areas, and
 Agile delivery across product, software, test, and platform teams.
+
+## Repository Timeline
+
+```text
+Phase 1
+-------
+Local Rust service bus
+
+↓
+
+Phase 2
+-------
+MQTT transport adapter
+
+↓
+
+Future
+-------
+Protobuf codec
+
+↓
+
+Future
+-------
+gRPC transport
+
+↓
+
+Future
+-------
+Production hardening
+```
 
 ## Architecture Caveat
 

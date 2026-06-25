@@ -4,6 +4,23 @@ This document tracks the staged work for turning this repository into an
 interview-ready Ford EVDD Rust Software Engineer portfolio and preparation
 package.
 
+## Reviewer Guide
+
+This document describes the repository timeline: what was built, what is
+complete, and what remains planned.
+
+It is relevant because it shows the implementation discipline behind the
+portfolio: small slices, explicit non-goals, broker-free defaults, and a clear
+path from local service bus to external transports.
+
+Read next:
+
+- [Coding README](docs/coding/README.md) for the reviewer-facing prototype
+  overview.
+- [Coding Design](docs/coding/DESIGN.md) for architecture and tradeoffs.
+- [Implementation Notes](docs/coding/IMPLEMENTATION.md) for detailed slice
+  status.
+
 Status legend:
 
 - `[x]` complete.
@@ -30,11 +47,13 @@ Completed:
 - [x] Phase 2 Slice 1 - serialization and broker-free MQTT adapter boundary
       implemented.
 - [x] Phase 2 Slice 2A.1 - `CommandTransport` abstraction implemented.
-- [x] Phase 2 Slice 2A.2 - broker-free `MqttClient` wrapper implemented.
+- [x] Phase 2 Slice 2A.2 - broker-free `MqttClient` and `MqttTransport`
+      wrappers implemented.
+- [x] Phase 2 Slice 2B - broker-free MQTT-shaped command flow implemented.
 
 Remaining:
 
-- [ ] Phase 2 Slice 2A+ - transport abstraction, MQTT client integration,
+- [ ] Phase 2 remaining work - live MQTT broker communication,
       broker-backed tests, optional `clap` CLI, cleanup, and documentation.
 
 ## Existing Repository State
@@ -84,8 +103,12 @@ Current filesystem state:
 |   |-- mqtt
 |   |   |-- adapter.rs
 |   |   |-- client.rs
+|   |   |-- command_flow.rs
 |   |   |-- mod.rs
-|   |   `-- topics.rs
+|   |   |-- publisher.rs
+|   |   |-- subscriber.rs
+|   |   |-- topics.rs
+|   |   `-- transport.rs
 |   |-- policy.rs
 |   |-- service_bus.rs
 |   |-- telemetry.rs
@@ -94,9 +117,15 @@ Current filesystem state:
     |-- command_tests.rs
     |-- command_transport_tests.rs
     |-- events_test.rs
-    |-- mqtt_adapter_tests.rs
-    |-- mqtt_client_tests.rs
-    |-- mqtt_topics_tests.rs
+    |-- mqtt
+    |   |-- adapter_tests.rs
+    |   |-- client_tests.rs
+    |   |-- command_flow_tests.rs
+    |   |-- publisher_tests.rs
+    |   |-- subscriber_tests.rs
+    |   |-- topics_tests.rs
+    |   `-- transport_tests.rs
+    |-- mqtt.rs
     |-- policy_tests.rs
     |-- serialization_tests.rs
     |-- service_bus_tests.rs
@@ -128,15 +157,24 @@ Current code status:
 - [x] `src/telemetry.rs` implements `VehicleEvent`, `VehicleEventKind`, and
       shared `InMemoryTelemetry`.
 - [x] `src/transport.rs` implements `BusMessage` and `InProcessTransport`.
-- [x] `src/mqtt/mod.rs` exports broker-free MQTT adapter modules.
+- [x] `src/mqtt/mod.rs` exports broker-free MQTT topic, adapter, client,
+      subscriber, publisher, command-flow, and transport modules.
 - [x] `src/mqtt/topics.rs` implements MQTT topic helpers.
-- [x] `src/mqtt/adapter.rs` implements the broker-free `MqttAdapter`,
-      placeholder subscriber, and placeholder acknowledgement publisher.
+- [x] `src/mqtt/adapter.rs` implements broker-free JSON encoding and decoding
+      between MQTT-shaped payloads and existing domain models.
 - [x] `src/mqtt/client.rs` implements broker-free `MqttClient` construction
       around `rumqttc`.
+- [x] `src/mqtt/subscriber.rs` implements broker-free command message decoding.
+- [x] `src/mqtt/publisher.rs` implements broker-free acknowledgement message
+      encoding.
+- [x] `src/mqtt/command_flow.rs` implements the broker-free MQTT-shaped
+      command flow through `VehicleCommandBus`.
+- [x] `src/mqtt/transport.rs` implements the MQTT transport wrapper around
+      `MqttClient`; broker-backed behavior remains future work.
 - [x] Root `tests/` contains command, event, policy, serialization, MQTT
-      adapter, MQTT topic, MQTT client, command transport, service bus,
-      telemetry, and transport tests.
+      adapter, MQTT topic, MQTT client, MQTT subscriber, MQTT publisher, MQTT
+      command-flow, MQTT transport, command transport, service bus, telemetry,
+      and transport tests.
 - [x] The Phase 1 command/event service-bus prototype is complete.
 
 ## Operating Rules
@@ -352,7 +390,8 @@ Completed tasks:
 - [x] Selected an in-process Tokio service bus for the first implementation.
 - [x] Added a transport abstraction with `InProcessTransport` first,
       `MqttAdapter` for broker-free Slice 1 adapter work, and
-      `MqttTransport` reserved for Slice 2A broker communication.
+      `MqttTransport` as the broker-free client wrapper that will own future
+      broker communication.
 - [x] Defined Recommended Phase 2 as an MQTT adapter around the existing
       service bus, not as the core domain model or a first-step dependency.
 - [x] Selected `rumqttc` as the preferred future Rust MQTT client.
@@ -571,9 +610,9 @@ Acceptance checks:
 - [x] The implementation avoids unsupported claims about Ford internal systems.
 - [x] The repository remains documentation-led and interview-focused.
 
-## Current Repository Layout After Stage 8
+## Current Repository Layout
 
-Stage 8 added the Rust prototype at the repository root while preserving the
+The Rust prototype lives at the repository root while preserving the
 documentation structure:
 
 ```text
@@ -590,18 +629,39 @@ documentation structure:
 |   `-- walkthrough
 |-- src
 |   |-- command.rs
+|   |-- command_transport.rs
 |   |-- error.rs
 |   |-- event.rs
 |   |-- lib.rs
 |   |-- main.rs
+|   |-- mqtt
+|   |   |-- adapter.rs
+|   |   |-- client.rs
+|   |   |-- command_flow.rs
+|   |   |-- mod.rs
+|   |   |-- publisher.rs
+|   |   |-- subscriber.rs
+|   |   |-- topics.rs
+|   |   `-- transport.rs
 |   |-- policy.rs
 |   |-- service_bus.rs
 |   |-- telemetry.rs
 |   `-- transport.rs
 `-- tests
     |-- command_tests.rs
+    |-- command_transport_tests.rs
     |-- events_test.rs
+    |-- mqtt
+    |   |-- adapter_tests.rs
+    |   |-- client_tests.rs
+    |   |-- command_flow_tests.rs
+    |   |-- publisher_tests.rs
+    |   |-- subscriber_tests.rs
+    |   |-- topics_tests.rs
+    |   `-- transport_tests.rs
+    |-- mqtt.rs
     |-- policy_tests.rs
+    |-- serialization_tests.rs
     |-- service_bus_tests.rs
     |-- telemetry_tests.rs
     `-- transport_tests.rs
@@ -629,14 +689,11 @@ transport boundary and must not replace `VehicleCommandBus`, validation,
 `PolicyEngine`, `InProcessTransport`, the background worker,
 `CommandAcknowledgement`, `VehicleEvent`, or `InMemoryTelemetry`.
 
-Phase 2 introduces a transport abstraction because the design has two
+Phase 2 introduces a transport abstraction because the design now has multiple
 transport-facing components:
 
 - `InProcessTransport`.
 - `MqttClient`.
-
-Future Slice 2 work can add:
-
 - `MqttTransport`.
 
 This is an intentional application of the Open/Closed Principle. New external
@@ -674,8 +731,8 @@ Implemented modules:
 Implemented tests:
 
 - `tests/serialization_tests.rs`.
-- `tests/mqtt_topics_tests.rs`.
-- `tests/mqtt_adapter_tests.rs`.
+- `tests/mqtt/topics_tests.rs`.
+- `tests/mqtt/adapter_tests.rs`.
 
 Acceptance checks:
 
@@ -704,14 +761,17 @@ Completed Slice 2A.2:
 - [x] Add `rumqttc`.
 - [x] Add `MqttClient`.
 - [x] Wrap MQTT client creation.
+- [x] Add broker-free `MqttTransport` wrapper construction.
 - [x] Keep broker communication disabled.
 - [x] Preserve broker-free tests.
 - [x] Add `src/mqtt/client.rs`.
-- [x] Add `tests/mqtt_client_tests.rs`.
+- [x] Add `src/mqtt/transport.rs`.
+- [x] Add `tests/mqtt/client_tests.rs`.
+- [x] Add `tests/mqtt/transport_tests.rs`.
 
 Remaining Slice 2A work:
 
-- [ ] Introduce `MqttTransport` for actual broker communication.
+- [ ] Exercise live broker communication through `MqttTransport`.
 - [ ] Keep `InProcessTransport` as the internal Tokio MPSC transport.
 - [ ] Keep `VehicleCommandBus` transport-independent.
 
@@ -720,33 +780,71 @@ Acceptance checks:
 - [x] Existing broker-free tests still pass by default.
 - [x] `CommandTransport` has unit test coverage.
 - [x] `MqttClient` construction has broker-free test coverage.
+- [x] `MqttTransport` construction has broker-free test coverage.
 - [x] There is no broker communication.
 - [x] There are no MQTT subscriptions.
 - [x] There is no MQTT publishing.
 - [x] `VehicleCommandBus` remains unchanged.
-- [ ] `MqttTransport` owns future broker communication and no business logic.
+- [ ] Future broker communication through `MqttTransport` owns no business
+      logic.
 
-### Slice 2B - MQTT Subscriber, Publisher, And Bus Integration
+### Slice 2B - MQTT Subscriber, Publisher, And Bus Integration - Complete
 
 Objective: connect MQTT message intake and acknowledgement publication to the
-existing service bus through the transport boundary.
+existing service bus through broker-free subscriber, publisher, and
+command-flow helpers.
 
-Planned work:
+Completed work:
 
-- [ ] Subscribe to `vehicle/{vin}/commands`.
-- [ ] Decode inbound MQTT payloads through the current JSON codec path.
-- [ ] Submit decoded `Command` values to `VehicleCommandBus`.
-- [ ] Publish acknowledgements to `vehicle/{vin}/command_ack`.
-- [ ] Preserve `VehicleEvent` and `InMemoryTelemetry` behavior.
-- [ ] Keep validation, policy, in-process routing, worker execution,
+- [x] Create broker-free MQTT subscriber behavior for `MqttCommandMessage`.
+- [x] Decode inbound MQTT-shaped payloads through the current JSON codec path.
+- [x] Submit decoded `Command` values to `VehicleCommandBus`.
+- [x] Create broker-free acknowledgement publisher behavior.
+- [x] Encode `CommandAcknowledgement` values into `MqttAcknowledgementMessage`.
+- [x] Preserve `VehicleEvent` and `InMemoryTelemetry` behavior.
+- [x] Keep validation, policy, in-process routing, worker execution,
       acknowledgements, events, and telemetry in the Phase 1 core.
+
+Implemented modules:
+
+- `src/mqtt/subscriber.rs`.
+- `src/mqtt/publisher.rs`.
+- `src/mqtt/command_flow.rs`.
+
+Implemented tests:
+
+- `tests/mqtt/subscriber_tests.rs`.
+- `tests/mqtt/publisher_tests.rs`.
+- `tests/mqtt/command_flow_tests.rs`.
+
+Completed broker-free flow:
+
+```text
+MqttCommandMessage
+    ↓
+MqttSubscriber
+    ↓
+Command
+    ↓
+VehicleCommandBus
+    ↓
+CommandAcknowledgement
+    ↓
+MqttAcknowledgementPublisher
+    ↓
+MqttAcknowledgementMessage
+```
 
 Acceptance checks:
 
-- [ ] Broker-free Phase 1 tests still pass by default.
-- [ ] MQTT subscriber and publisher behavior can be exercised separately from
+- [x] Broker-free Phase 1 tests still pass by default.
+- [x] MQTT subscriber and publisher behavior can be exercised separately from
       the default test path.
-- [ ] `VehicleCommandBus` remains transport-independent.
+- [x] `VehicleCommandBus` remains unchanged and transport-independent.
+- [x] There is no live broker communication.
+- [x] There is no real MQTT subscription loop.
+- [x] There is no real MQTT publishing loop.
+- [x] There are no broker-backed integration tests yet.
 
 ### Slice 3 - Broker-Backed Integration Tests
 
@@ -825,9 +923,11 @@ additional `rumqttc` changes as part of this documentation-only refinement.
 
 - [x] Complete Phase 2 Slice 1 - serialization and adapter interfaces.
 - [x] Complete Phase 2 Slice 2A.1 - `CommandTransport` abstraction.
-- [x] Complete Phase 2 Slice 2A.2 - broker-free `MqttClient` wrapper.
-- [ ] Complete remaining Phase 2 Slice 2A work - `MqttTransport`.
-- [ ] Complete Phase 2 Slice 2B - MQTT subscriber, publisher, and bus
+- [x] Complete Phase 2 Slice 2A.2 - broker-free `MqttClient` and
+      `MqttTransport` wrappers.
+- [ ] Complete remaining Phase 2 Slice 2A work - live broker communication
+      through `MqttTransport`.
+- [x] Complete Phase 2 Slice 2B - MQTT subscriber, publisher, and bus
       integration.
 - [ ] Complete Phase 2 Slice 3 - broker-backed integration tests.
 - [ ] Complete Phase 2 Slice 4 - `clap` CLI.
