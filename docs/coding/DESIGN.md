@@ -315,10 +315,24 @@ Phase 2 extends Phase 1 rather than replacing it.
 
 ## Phase 2: MQTT Adapter Extension
 
-Recommended Phase 2: MQTT adapter around the existing service bus.
+Recommended Phase 2: transport abstraction plus MQTT adapter around the
+existing service bus.
 
 MQTT can be added without changing the core command flow. MQTT represents an
-external integration boundary around the existing architecture.
+external transport around the existing architecture. Tokio MPSC remains the
+internal transport used for in-application routing.
+
+Phase 2 should introduce a transport abstraction before connecting MQTT to the
+service bus. This abstraction is justified because Phase 2 now has two
+transport implementations:
+
+- `InProcessTransport`.
+- `MqttTransport`.
+
+This is an intentional application of the Open/Closed Principle: the system can
+add a new transport implementation without moving business logic out of the
+existing command, validation, policy, worker, acknowledgement, event, or
+telemetry path. `VehicleCommandBus` should remain transport-independent.
 
 MQTT must not replace:
 
@@ -338,32 +352,23 @@ acknowledgements back to MQTT.
 ```mermaid
 flowchart TD
     Broker["External MQTT broker"]
-    TopicIn["vehicle/{vin}/commands"]
-    Subscriber["MqttCommandSubscriber"]
-    Decoder["Command decoder"]
+    MqttTransport["MqttTransport"]
+    MessageTransport["MessageTransport"]
     Bus["VehicleCommandBus"]
     Validation["Validation"]
     Policy["PolicyEngine"]
     InternalTransport["InProcessTransport<br/>Tokio MPSC"]
     Worker["Background worker"]
     Vehicle["MockVehicleService"]
-    Ack["CommandAcknowledgement"]
-    Publisher["MqttAcknowledgementPublisher"]
-    TopicOut["vehicle/{vin}/command_ack"]
 
-    Broker --> TopicIn
-    TopicIn --> Subscriber
-    Subscriber --> Decoder
-    Decoder --> Bus
+    Broker --> MqttTransport
+    MqttTransport --> MessageTransport
+    MessageTransport --> Bus
     Bus --> Validation
     Validation --> Policy
     Policy --> InternalTransport
     InternalTransport --> Worker
     Worker --> Vehicle
-    Vehicle --> Ack
-    Ack --> Publisher
-    Publisher --> TopicOut
-    TopicOut --> Broker
 ```
 
 Broker decision:
@@ -445,8 +450,9 @@ business logic moves into the adapter. Validation, policy, internal routing,
 worker execution, acknowledgements, events, and telemetry remain owned by the
 Phase 1 core.
 
-`MqttTransport` is reserved for Slice 2, when `rumqttc` is introduced and the
-code performs actual broker communication.
+`MqttTransport` is reserved for Slice 2A, when `rumqttc` is introduced and the
+code performs actual broker communication through the `MessageTransport`
+abstraction.
 
 ```mermaid
 flowchart TD
@@ -483,6 +489,86 @@ Phase 2 can evolve the thin demonstration executable into a `clap` CLI for:
 
 The CLI must stay as an executable wrapper around the library. It should not
 become the owner of domain logic.
+
+## Future Codec Extensions
+
+The current implementation uses:
+
+```text
+serde
+serde_json
+```
+
+JSON is the right current codec because it is easy to debug, produces readable
+payloads, is interview-friendly, requires no schema compiler, and is excellent
+for early development.
+
+Codec choice is independent of transport choice. MQTT can carry JSON or
+Protobuf payloads. gRPC naturally uses Protobuf, but it can still reuse the
+same `VehicleCommandBus` behind a different external transport.
+
+```text
+Command
+        |
+Codec
+   |-----------|
+   |           |
+JSON        Protobuf
+(serde)     (prost)
+```
+
+Phase 2 continues using JSON. Protobuf is future work only. Do not add codec
+dependencies, transport dependencies, broker configuration, or `rumqttc`
+changes as part of this documentation update.
+
+### Protobuf
+
+Protobuf is a binary serialization format. It generally produces smaller
+payloads than JSON, supports faster serialization and deserialization, and has
+strong schema evolution support. It is suitable for embedded and
+bandwidth-constrained systems where payload size, parse cost, and compatibility
+rules matter.
+
+Recommended future Rust library:
+
+```text
+prost
+```
+
+Do not add this dependency yet.
+
+### gRPC
+
+gRPC uses HTTP/2 and typically uses Protobuf for message encoding. It
+represents a different external transport from MQTT, not a different service
+bus. A future gRPC adapter can decode requests, call the same
+`VehicleCommandBus`, and return acknowledgements without replacing validation,
+policy, internal routing, worker execution, events, or telemetry.
+
+Recommended future Rust library:
+
+```text
+tonic
+```
+
+Do not add this dependency yet.
+
+## Future Transports
+
+- MQTT.
+- D-Bus.
+- gRPC.
+- NATS.
+- Kafka.
+
+Future transports should remain adapters. They should not replace the core
+validation, policy, queue ownership, acknowledgement, event, or telemetry
+model.
+
+## Future Codecs
+
+- JSON with `serde` and `serde_json` is current.
+- Protobuf with `prost` is future work.
 
 ## Phase 1 Summary
 

@@ -32,8 +32,8 @@ Completed:
 
 Remaining:
 
-- [ ] Phase 2 Slice 2+ - MQTT client integration, broker-backed tests,
-      optional `clap` CLI, cleanup, and documentation.
+- [ ] Phase 2 Slice 2A+ - transport abstraction, MQTT client integration,
+      broker-backed tests, optional `clap` CLI, cleanup, and documentation.
 
 ## Existing Repository State
 
@@ -341,7 +341,7 @@ Completed tasks:
 - [x] Selected an in-process Tokio service bus for the first implementation.
 - [x] Added a transport abstraction with `InProcessTransport` first,
       `MqttAdapter` for broker-free Slice 1 adapter work, and
-      `MqttTransport` reserved for Slice 2 broker communication.
+      `MqttTransport` reserved for Slice 2A broker communication.
 - [x] Defined Recommended Phase 2 as an MQTT adapter around the existing
       service bus, not as the core domain model or a first-step dependency.
 - [x] Selected `rumqttc` as the preferred future Rust MQTT client.
@@ -614,9 +614,19 @@ documentation structure:
 ## Phase 2 Plan
 
 Phase 2 extends the completed Phase 1 architecture. MQTT is an external
-integration boundary and must not replace `VehicleCommandBus`, validation,
+transport boundary and must not replace `VehicleCommandBus`, validation,
 `PolicyEngine`, `InProcessTransport`, the background worker,
 `CommandAcknowledgement`, `VehicleEvent`, or `InMemoryTelemetry`.
+
+Phase 2 now introduces a transport abstraction because the design has two
+transport implementations:
+
+- `InProcessTransport`.
+- `MqttTransport`.
+
+This is an intentional application of the Open/Closed Principle. New external
+transport behavior should be added through `MessageTransport` without moving
+business logic into MQTT code.
 
 Each Phase 2 slice should remain independently testable and end with a working
 commit.
@@ -661,25 +671,48 @@ Acceptance checks:
 - [x] Slice 1 remains broker-free.
 - [x] Slice 1 does not introduce `rumqttc`.
 
-### Slice 2 - MQTT Client Integration
+### Slice 2A - Transport Abstraction And MQTT Client Wrapper
 
-Objective: connect the adapter to an external local MQTT broker.
+Objective: introduce `MessageTransport`, add `rumqttc`, and create the MQTT
+client wrapper without wiring subscriber/publisher behavior into
+`VehicleCommandBus`.
 
 Planned work:
 
+- [ ] Add `MessageTransport`.
 - [ ] Add `rumqttc`.
 - [ ] Introduce `MqttTransport` for actual broker communication.
+- [ ] Keep `InProcessTransport` as the internal Tokio MPSC transport.
+- [ ] Keep `VehicleCommandBus` transport-independent.
 - [ ] Use an external local broker such as Mosquitto or EMQX.
+
+Acceptance checks:
+
+- [ ] Existing broker-free tests still pass by default.
+- [ ] `MessageTransport` has coverage for in-process and MQTT-facing behavior.
+- [ ] `MqttTransport` owns broker communication and no business logic.
+
+### Slice 2B - MQTT Subscriber, Publisher, And Bus Integration
+
+Objective: connect MQTT message intake and acknowledgement publication to the
+existing service bus through the transport boundary.
+
+Planned work:
+
 - [ ] Subscribe to `vehicle/{vin}/commands`.
+- [ ] Decode inbound MQTT payloads through the current JSON codec path.
+- [ ] Submit decoded `Command` values to `VehicleCommandBus`.
 - [ ] Publish acknowledgements to `vehicle/{vin}/command_ack`.
+- [ ] Preserve `VehicleEvent` and `InMemoryTelemetry` behavior.
 - [ ] Keep validation, policy, in-process routing, worker execution,
       acknowledgements, events, and telemetry in the Phase 1 core.
 
 Acceptance checks:
 
 - [ ] Broker-free Phase 1 tests still pass by default.
-- [ ] MQTT client behavior can be exercised separately from the default test
-      path.
+- [ ] MQTT subscriber and publisher behavior can be exercised separately from
+      the default test path.
+- [ ] `VehicleCommandBus` remains transport-independent.
 
 ### Slice 3 - Broker-Backed Integration Tests
 
@@ -735,10 +768,31 @@ Acceptance checks:
 - [ ] Phase 1 local-first behavior remains documented and working.
 - [ ] The final Phase 2 diff is ready for review and commit.
 
+## Future Codec Direction
+
+Phase 2 continues using JSON with `serde` and `serde_json`. JSON remains the
+current codec because it is readable, easy to debug, interview-friendly, does
+not require a schema compiler, and is effective for early development.
+
+Codec support is separate from transport support:
+
+- Future transports: MQTT, D-Bus, gRPC, NATS, Kafka.
+- Current codec: JSON.
+- Future codec: Protobuf.
+
+Protobuf is future work only. A future Protobuf implementation should use
+`prost`. A future gRPC transport should use `tonic` and can reuse the same
+`VehicleCommandBus`.
+
+Do not add implementation changes, dependency changes, broker changes, or
+additional `rumqttc` changes as part of this documentation-only refinement.
+
 ## Remaining Work Summary
 
 - [x] Complete Phase 2 Slice 1 - serialization and adapter interfaces.
-- [ ] Complete Phase 2 Slice 2 - MQTT client integration.
+- [ ] Complete Phase 2 Slice 2A - transport abstraction and MQTT client wrapper.
+- [ ] Complete Phase 2 Slice 2B - MQTT subscriber, publisher, and bus
+      integration.
 - [ ] Complete Phase 2 Slice 3 - broker-backed integration tests.
 - [ ] Complete Phase 2 Slice 4 - `clap` CLI.
 - [ ] Complete Phase 2 Slice 5 - cleanup and documentation.

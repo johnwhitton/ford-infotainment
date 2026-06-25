@@ -293,11 +293,22 @@ claims about Ford internal systems.
 
 ## Phase 2: MQTT Adapter Extension
 
-Recommended Phase 2: MQTT adapter around the existing service bus.
+Recommended Phase 2: transport abstraction plus MQTT adapter around the
+existing service bus.
 
 Phase 2 can add MQTT without changing the core command flow. It should add
-MQTT as an external integration boundary around the same validation, policy,
-acknowledgement, and telemetry logic used by the local prototype.
+MQTT as an external transport around the same validation, policy,
+acknowledgement, and telemetry logic used by the local prototype. Tokio MPSC
+remains the internal transport.
+
+Phase 2 should introduce `MessageTransport` only because there are now two
+transport implementations:
+
+- `InProcessTransport`.
+- `MqttTransport`.
+
+This keeps the design aligned with the Open/Closed Principle: new external
+transport behavior can be added without moving business logic into MQTT code.
 
 Phase 2 may add:
 
@@ -311,8 +322,9 @@ Optional local broker run instructions
 ```
 
 `MqttAdapter` is the Slice 1 broker-free adapter boundary.
-`MqttTransport` is reserved for Slice 2, when `rumqttc` is introduced and the
-code performs actual broker communication.
+`MqttTransport` is reserved for Slice 2A, when `rumqttc` is introduced and the
+code performs actual broker communication through the `MessageTransport`
+abstraction.
 
 ## Phase 2 Implementation Sequence
 
@@ -353,37 +365,59 @@ values and use existing `CommandAcknowledgement` values for outbound
 acknowledgements. Topic names are produced by helper functions rather than
 duplicated as hard-coded strings.
 
+### Slice 2A - Transport Abstraction And MQTT Client Wrapper
+
+Slice 2A introduces the transport abstraction and the concrete MQTT client
+wrapper. It does not yet wire subscriber or publisher behavior into
+`VehicleCommandBus`.
+
+Planned Slice 2A work:
+
+1. Add `MessageTransport`.
+2. Add `rumqttc`.
+3. Introduce `MqttTransport` for actual broker communication.
+4. Keep `InProcessTransport` as the internal Tokio MPSC transport.
+5. Keep `VehicleCommandBus` transport-independent.
+
+Slice 2A must not move validation, policy, internal routing, worker execution,
+acknowledgements, events, or telemetry into MQTT code.
+
+### Slice 2B - MQTT Subscriber, Publisher, And Bus Integration
+
+Slice 2B connects MQTT message intake and acknowledgement publishing to the
+existing service bus through the transport boundary.
+
+Planned Slice 2B work:
+
+1. Create MQTT subscriber behavior for `vehicle/{vin}/commands`.
+2. Decode inbound payloads through the existing JSON codec path.
+3. Submit decoded `Command` values to `VehicleCommandBus`.
+4. Create MQTT publisher behavior for `vehicle/{vin}/command_ack`.
+5. Publish `CommandAcknowledgement` values returned by the service bus.
+6. Preserve `VehicleEvent` and `InMemoryTelemetry` behavior.
+
 Recommended Phase 2 architecture:
 
 ```mermaid
 flowchart TD
     Broker["External MQTT broker"]
-    TopicIn["vehicle/{vin}/commands"]
-    Subscriber["MqttCommandSubscriber"]
-    Decoder["Command decoder"]
+    MqttTransport["MqttTransport"]
+    MessageTransport["MessageTransport"]
     Bus["VehicleCommandBus"]
     Validation["Validation"]
     Policy["PolicyEngine"]
     InternalTransport["InProcessTransport<br/>Tokio MPSC"]
     Worker["Background worker"]
     Vehicle["MockVehicleService"]
-    Ack["CommandAcknowledgement"]
-    Publisher["MqttAcknowledgementPublisher"]
-    TopicOut["vehicle/{vin}/command_ack"]
 
-    Broker --> TopicIn
-    TopicIn --> Subscriber
-    Subscriber --> Decoder
-    Decoder --> Bus
+    Broker --> MqttTransport
+    MqttTransport --> MessageTransport
+    MessageTransport --> Bus
     Bus --> Validation
     Validation --> Policy
     Policy --> InternalTransport
     InternalTransport --> Worker
     Worker --> Vehicle
-    Vehicle --> Ack
-    Ack --> Publisher
-    Publisher --> TopicOut
-    TopicOut --> Broker
 ```
 
 MQTT must not replace:
@@ -400,7 +434,8 @@ MQTT must not replace:
 
 MQTT should wrap the current architecture by converting external topic
 messages into internal `Command` values and publishing resulting
-acknowledgements back to MQTT.
+acknowledgements back to MQTT. `VehicleCommandBus` remains
+transport-independent.
 
 Broker decision:
 
@@ -426,7 +461,9 @@ into `main.rs`.
 Phase 2 is complete when:
 
 ```text
+MessageTransport exists because there are two transport implementations
 MqttTransport exists behind an optional feature or separate module
+VehicleCommandBus remains transport-independent
 Phase 1 tests still pass without broker
 broker-backed tests are opt-in
 commands can be consumed from vehicle/{vin}/commands
@@ -435,18 +472,29 @@ MQTT does not bypass validation
 MQTT does not bypass policy
 MQTT does not replace acknowledgements
 MQTT does not replace telemetry
-MQTT wraps the service-bus architecture
+MQTT wraps the service-bus architecture through MessageTransport
 ```
 
-## Future Extensions
+## Future Transports
 
-Potential future adapters:
-
-- MQTT using `rumqttc`.
+- MQTT.
 - D-Bus.
 - gRPC.
 - NATS.
 - Kafka.
 
-These extensions should remain transport adapters. They should not replace the
-core validation, policy, queue ownership, acknowledgement, or telemetry model.
+Future transports should remain adapters. They should not replace the core
+validation, policy, queue ownership, acknowledgement, event, or telemetry
+model.
+
+## Future Codecs
+
+- JSON with `serde` and `serde_json` is current.
+- Protobuf with `prost` is future work.
+
+The codec is independent of transport. MQTT can use JSON or Protobuf. gRPC
+naturally uses Protobuf, but it is still a future transport adapter around the
+same `VehicleCommandBus`.
+
+Do not add Protobuf, gRPC, `prost`, `tonic`, broker, or additional `rumqttc`
+changes as part of the current documentation-only refinement.
