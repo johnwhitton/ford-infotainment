@@ -27,11 +27,13 @@ Completed:
       section-specific image folders.
 - [x] Stage 7 - documentation organization changes committed.
 - [x] Stage 8 - Phase 1 Rust command/event service-bus prototype implemented.
+- [x] Phase 2 Slice 1 - serialization and broker-free MQTT adapter boundary
+      implemented.
 
 Remaining:
 
-- [ ] Phase 2 - recommended MQTT adapter around the existing service bus,
-      plus optional `clap` CLI work.
+- [ ] Phase 2 Slice 2+ - MQTT client integration, broker-backed tests,
+      optional `clap` CLI, cleanup, and documentation.
 
 ## Existing Repository State
 
@@ -76,6 +78,10 @@ Current filesystem state:
 |   |-- event.rs
 |   |-- lib.rs
 |   |-- main.rs
+|   |-- mqtt
+|   |   |-- adapter.rs
+|   |   |-- mod.rs
+|   |   `-- topics.rs
 |   |-- policy.rs
 |   |-- service_bus.rs
 |   |-- telemetry.rs
@@ -83,7 +89,10 @@ Current filesystem state:
 `-- tests
     |-- command_tests.rs
     |-- events_test.rs
+    |-- mqtt_adapter_tests.rs
+    |-- mqtt_topics_tests.rs
     |-- policy_tests.rs
+    |-- serialization_tests.rs
     |-- service_bus_tests.rs
     |-- telemetry_tests.rs
     `-- transport_tests.rs
@@ -111,8 +120,12 @@ Current code status:
 - [x] `src/telemetry.rs` implements `VehicleEvent`, `VehicleEventKind`, and
       shared `InMemoryTelemetry`.
 - [x] `src/transport.rs` implements `BusMessage` and `InProcessTransport`.
-- [x] Root `tests/` contains command, event, policy, service bus, telemetry,
-      and transport tests.
+- [x] `src/mqtt/mod.rs` exports broker-free MQTT adapter modules.
+- [x] `src/mqtt/topics.rs` implements MQTT topic helpers.
+- [x] `src/mqtt/adapter.rs` implements the broker-free `MqttAdapter`,
+      placeholder subscriber, and placeholder acknowledgement publisher.
+- [x] Root `tests/` contains command, event, policy, serialization, MQTT
+      adapter, MQTT topic, service bus, telemetry, and transport tests.
 - [x] The Phase 1 command/event service-bus prototype is complete.
 
 ## Operating Rules
@@ -327,7 +340,7 @@ Completed tasks:
       Docker and without a broker.
 - [x] Selected an in-process Tokio service bus for the first implementation.
 - [x] Added a transport abstraction with `InProcessTransport` first,
-      `MqttMessageAdapter` for broker-free Slice 1 adapter work, and
+      `MqttAdapter` for broker-free Slice 1 adapter work, and
       `MqttTransport` reserved for Slice 2 broker communication.
 - [x] Defined Recommended Phase 2 as an MQTT adapter around the existing
       service bus, not as the core domain model or a first-step dependency.
@@ -608,31 +621,45 @@ integration boundary and must not replace `VehicleCommandBus`, validation,
 Each Phase 2 slice should remain independently testable and end with a working
 commit.
 
-### Slice 1 - Serialization And Adapter Interfaces
+### Slice 1 - Serialization And Adapter Interfaces - Complete
 
 Objective: prepare the MQTT adapter boundary without connecting to a broker.
 
-Planned work:
+Completed work:
 
-- [ ] Add `serde`.
-- [ ] Serialize `Command`.
-- [ ] Serialize `CommandAcknowledgement`.
-- [ ] Create MQTT topic helpers for `vehicle/{vin}/commands`,
+- [x] Add `serde`.
+- [x] Serialize `Command`.
+- [x] Serialize `CommandAcknowledgement`.
+- [x] Create MQTT topic helpers for `vehicle/{vin}/commands`,
       `vehicle/{vin}/command_ack`, and `vehicle/{vin}/telemetry`.
-- [ ] Create `MqttMessageAdapter`.
-- [ ] Create a placeholder subscriber.
-- [ ] Create a placeholder acknowledgement publisher.
-- [ ] Keep `VehicleCommandBus` unchanged.
-- [ ] Do not introduce `rumqttc` yet.
-- [ ] Do not name broker-free placeholder code `MqttTransport`.
-- [ ] Do not add broker configuration.
+- [x] Create `MqttAdapter`.
+- [x] Create a placeholder subscriber.
+- [x] Create a placeholder acknowledgement publisher.
+- [x] Keep `VehicleCommandBus` unchanged.
+- [x] Do not introduce `rumqttc`.
+- [x] Do not name broker-free adapter code `MqttTransport`.
+- [x] Do not add broker configuration.
+
+Implemented modules:
+
+- `src/mqtt/mod.rs`.
+- `src/mqtt/topics.rs`.
+- `src/mqtt/adapter.rs`.
+
+Implemented tests:
+
+- `tests/serialization_tests.rs`.
+- `tests/mqtt_topics_tests.rs`.
+- `tests/mqtt_adapter_tests.rs`.
 
 Acceptance checks:
 
-- [ ] Existing Phase 1 tests still pass.
-- [ ] Serialization tests cover commands and acknowledgements.
-- [ ] Topic helper tests cover command, acknowledgement, and telemetry topics.
-- [ ] `MqttMessageAdapter` placeholders compile without broker connectivity.
+- [x] Existing Phase 1 tests still pass.
+- [x] Serialization tests cover commands and acknowledgements.
+- [x] Topic helper tests cover command, acknowledgement, and telemetry topics.
+- [x] `MqttAdapter` placeholders compile without broker connectivity.
+- [x] Slice 1 remains broker-free.
+- [x] Slice 1 does not introduce `rumqttc`.
 
 ### Slice 2 - MQTT Client Integration
 
@@ -710,7 +737,7 @@ Acceptance checks:
 
 ## Remaining Work Summary
 
-- [ ] Complete Phase 2 Slice 1 - serialization and adapter interfaces.
+- [x] Complete Phase 2 Slice 1 - serialization and adapter interfaces.
 - [ ] Complete Phase 2 Slice 2 - MQTT client integration.
 - [ ] Complete Phase 2 Slice 3 - broker-backed integration tests.
 - [ ] Complete Phase 2 Slice 4 - `clap` CLI.
