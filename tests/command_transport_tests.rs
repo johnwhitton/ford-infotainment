@@ -11,6 +11,7 @@ use ford_infotainment::{
 struct StubCommandTransport;
 
 impl CommandTransport for StubCommandTransport {
+    #[allow(clippy::manual_async_fn)]
     fn submit_command(
         &self,
         command: Command,
