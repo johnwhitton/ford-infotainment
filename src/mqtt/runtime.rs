@@ -1,8 +1,6 @@
 use std::time::Duration;
 
-use rumqttc::Publish;
-
-use crate::mqtt::client::MqttClient;
+use crate::mqtt::{client::MqttClient, handler::MqttPublishHandler};
 
 pub struct MqttRuntime {
     client: MqttClient,
@@ -21,15 +19,15 @@ impl MqttRuntime {
         &mut self.client
     }
 
-    pub fn run_once<F>(&mut self, timeout: Duration, mut handler: F) -> bool
+    pub fn run_once<H>(&mut self, timeout: Duration, handler: &mut H) -> bool
     where
-        F: FnMut(Publish),
+        H: MqttPublishHandler,
     {
         let Some(publish) = self.client.recv_publish(timeout) else {
             return false;
         };
 
-        handler(publish);
+        handler.handle(publish);
 
         true
     }

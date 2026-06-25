@@ -1,7 +1,22 @@
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
-use ford_infotainment::mqtt::{client::MqttClient, runtime::MqttRuntime};
-use rumqttc::QoS;
+use ford_infotainment::mqtt::{
+    client::MqttClient, handler::MqttPublishHandler, runtime::MqttRuntime,
+};
+use rumqttc::{Publish, QoS};
+
+#[derive(Default)]
+struct RecordingPublishHandler {
+    topic: Option<String>,
+    payload: Option<String>,
+}
+
+impl MqttPublishHandler for RecordingPublishHandler {
+    fn handle(&mut self, publish: Publish) {
+        self.topic = Some(publish.topic);
+        self.payload = Some(String::from_utf8_lossy(&publish.payload).to_string());
+    }
+}
 
 #[test]
 #[ignore = "requires local MQTT broker on localhost:1883"]
@@ -30,15 +45,11 @@ fn mqtt_runtime_dispatches_one_publish_to_handler() {
         .publish(topic.clone(), QoS::AtLeastOnce, false, payload.clone())
         .expect("should publish runtime test payload");
 
-    let mut received_topic = String::new();
-    let mut received_payload = String::new();
+    let mut handler = RecordingPublishHandler::default();
 
-    let handled = runtime.run_once(Duration::from_secs(5), |publish| {
-        received_topic = publish.topic;
-        received_payload = String::from_utf8_lossy(&publish.payload).to_string();
-    });
+    let handled = runtime.run_once(Duration::from_secs(5), &mut handler);
 
     assert!(handled);
-    assert_eq!(received_topic, topic);
-    assert_eq!(received_payload, payload);
+    assert_eq!(handler.topic.as_deref(), Some(topic.as_str()));
+    assert_eq!(handler.payload.as_deref(), Some(payload.as_str()));
 }

@@ -1,6 +1,7 @@
 pub mod adapter;
 pub mod client;
 pub mod command_flow;
+pub mod handler;
 pub mod publisher;
 pub mod runtime;
 pub mod subscriber;
