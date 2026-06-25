@@ -1,4 +1,4 @@
-use ford_infotainment::mqtt_topics::MqttTopics;
+use ford_infotainment::mqtt::topics::MqttTopics;
 
 #[test]
 fn builds_command_topic() {
