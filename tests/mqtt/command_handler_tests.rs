@@ -100,4 +100,14 @@ async fn command_publish_handler_submits_decoded_command_to_service_bus() {
     assert_eq!(ack.command_id, "cmd-handler-bus-001");
     assert_eq!(ack.vehicle_id, "VIN-001");
     assert_eq!(ack.status, CommandStatus::Executed);
+
+    assert_eq!(handler.acknowledgement_messages().len(), 1);
+    assert!(handler.encode_errors().is_empty());
+
+    let ack_message = &handler.acknowledgement_messages()[0];
+
+    assert_eq!(
+        ack_message.topic,
+        MqttTopics::acknowledgement_topic("VIN-001")
+    );
 }

@@ -3,7 +3,12 @@ use rumqttc::Publish;
 use crate::{
     command::Command,
     event::CommandAcknowledgement,
-    mqtt::{adapter::MqttCommandMessage, handler::MqttPublishHandler, subscriber::MqttSubscriber},
+    mqtt::{
+        adapter::{MqttAcknowledgementMessage, MqttCommandMessage},
+        handler::MqttPublishHandler,
+        publisher::MqttAcknowledgementPublisher,
+        subscriber::MqttSubscriber,
+    },
     service_bus::VehicleCommandBus,
 };
 
@@ -12,7 +17,9 @@ pub struct MqttCommandPublishHandler {
     messages: Vec<MqttCommandMessage>,
     commands: Vec<Command>,
     acknowledgements: Vec<CommandAcknowledgement>,
+    acknowledgement_messages: Vec<MqttAcknowledgementMessage>,
     decode_errors: Vec<String>,
+    encode_errors: Vec<String>,
 }
 
 impl MqttCommandPublishHandler {
@@ -32,8 +39,16 @@ impl MqttCommandPublishHandler {
         &self.acknowledgements
     }
 
+    pub fn acknowledgement_messages(&self) -> &[MqttAcknowledgementMessage] {
+        &self.acknowledgement_messages
+    }
+
     pub fn decode_errors(&self) -> &[String] {
         &self.decode_errors
+    }
+
+    pub fn encode_errors(&self) -> &[String] {
+        &self.encode_errors
     }
 
     pub fn into_messages(self) -> Vec<MqttCommandMessage> {
@@ -53,6 +68,15 @@ impl MqttCommandPublishHandler {
         match MqttSubscriber::decode(&message) {
             Ok(command) => {
                 let acknowledgement = bus.submit(command.clone()).await;
+
+                match MqttAcknowledgementPublisher::encode(&acknowledgement) {
+                    Ok(acknowledgement_message) => {
+                        self.acknowledgement_messages.push(acknowledgement_message);
+                    }
+                    Err(error) => {
+                        self.encode_errors.push(error.to_string());
+                    }
+                }
 
                 self.commands.push(command);
                 self.acknowledgements.push(acknowledgement);
