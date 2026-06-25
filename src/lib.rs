@@ -1,4 +1,5 @@
 pub mod command;
+pub mod command_transport;
 pub mod error;
 pub mod event;
 pub mod mqtt;
