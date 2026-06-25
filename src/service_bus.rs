@@ -39,14 +39,20 @@ impl VehicleCommandBus {
                 let command = message.command;
 
                 let ack = match vehicle_service.execute(&command).await {
-                    Ok(()) => CommandAcknowledgement::executed(&command),
+                    Ok(()) => {
+                        worker_telemetry.record(VehicleEvent {
+                            kind: VehicleEventKind::CommandExecuted,
+                            command_id: Some(command.command_id.clone()),
+                            vehicle_id: Some(command.vehicle_id.clone()),
+                            message: "command executed".to_string(),
+                        });
+
+                        CommandAcknowledgement::executed(&command)
+                    }
                     Err(err) => CommandAcknowledgement::failed(&command, err),
                 };
 
-                // This is currently a clone-local telemetry sink.
-                // We will improve shared telemetry in the next step.
-                let mut telemetry = worker_telemetry.clone();
-                telemetry.record(VehicleEvent {
+                worker_telemetry.record(VehicleEvent {
                     kind: VehicleEventKind::AcknowledgementEmitted,
                     command_id: Some(command.command_id.clone()),
                     vehicle_id: Some(command.vehicle_id.clone()),

@@ -1,3 +1,5 @@
+use std::sync::{Arc, Mutex};
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum VehicleEventKind {
     CommandReceived,
@@ -20,15 +22,21 @@ pub struct VehicleEvent {
 
 #[derive(Debug, Clone, Default)]
 pub struct InMemoryTelemetry {
-    events: Vec<VehicleEvent>,
+    events: Arc<Mutex<Vec<VehicleEvent>>>,
 }
 
 impl InMemoryTelemetry {
-    pub fn record(&mut self, event: VehicleEvent) {
-        self.events.push(event);
+    pub fn record(&self, event: VehicleEvent) {
+        self.events
+            .lock()
+            .expect("telemetry mutex should not be poisoned")
+            .push(event);
     }
 
-    pub fn events(&self) -> &[VehicleEvent] {
-        &self.events
+    pub fn events(&self) -> Vec<VehicleEvent> {
+        self.events
+            .lock()
+            .expect("telemetry mutex should not be poisoned")
+            .clone()
     }
 }
