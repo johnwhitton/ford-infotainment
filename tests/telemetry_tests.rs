@@ -2,7 +2,7 @@ use ford_infotainment::telemetry::{InMemoryTelemetry, VehicleEvent, VehicleEvent
 
 #[test]
 fn records_vehicle_event() {
-    let mut telemetry = InMemoryTelemetry::default();
+    let telemetry = InMemoryTelemetry::default();
 
     telemetry.record(VehicleEvent {
         kind: VehicleEventKind::CommandReceived,
