@@ -10,6 +10,9 @@ mod client_tests;
 #[path = "mqtt/command_flow_tests.rs"]
 mod command_flow_tests;
 
+#[path = "mqtt/command_handler_tests.rs"]
+mod command_handler_tests;
+
 #[path = "mqtt/publisher_tests.rs"]
 mod publisher_tests;
 
