@@ -19,4 +19,10 @@ pub enum CommandError {
 
     #[error("bus send failed")]
     BusSendFailed,
+
+    #[error("service unavailable")]
+    ServiceUnavailable,
+
+    #[error("acknowledgement failed")]
+    AckFailed,
 }
