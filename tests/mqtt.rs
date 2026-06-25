@@ -4,6 +4,9 @@ mod adapter_tests;
 #[path = "mqtt/client_tests.rs"]
 mod client_tests;
 
+#[path = "mqtt/command_flow_tests.rs"]
+mod command_flow_tests;
+
 #[path = "mqtt/publisher_tests.rs"]
 mod publisher_tests;
 
